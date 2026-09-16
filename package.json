@@ -23,7 +23,7 @@
       },
       {
         "command": "vsnewt.compileGenerated",
-        "title": "Compile with VSNewt (Generate)"
+        "title": "Compile with VSNewt for debugging"
       },
       {
         "command": "vsnewt.compileNsof",
@@ -31,7 +31,7 @@
       },
       {
         "command": "vsnewt.compileNsofGenerated",
-        "title": "Compile NSOF with VSNewt (Generate)"
+        "title": "Compile NSOF with VSNewt for debugging"
       },
       {
         "command": "vsnewt.runNsof",
