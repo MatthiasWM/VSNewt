@@ -61,7 +61,13 @@ To work on the extension: open this folder in VS Code and start **Run
 Extension (samples)**. A second VS Code window (Extension Development Host)
 opens the `samples` folder; open `hello.ns` there and press F5.
 
-Tests: `npm test` also starts a debug session. `NEWTC=/path/to/newtc npm test`
+To debug `newtc` itself while VS Code talks to it: run
+`newtc -dap-server 4711` (e.g. in lldb), then start a configuration with
+`"debugServer": 4711` (snippet **NewtonScript: Connect to newtc
+-dap-server**). `"log": "/path/dap.log"` makes newtc write all Debug Adapter
+Protocol messages to that file.
+
+Tests: `npm test` also starts debug sessions. `NEWTC=/path/to/newtc npm test`
 uses that newtc.
 
 ## Build and package

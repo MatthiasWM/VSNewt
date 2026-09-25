@@ -1,5 +1,7 @@
 import * as assert from 'assert';
+import { spawn } from 'child_process';
 import * as fs from 'fs';
+import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
 
@@ -38,15 +40,10 @@ suite('Extension Test Suite', () => {
 		assert.strictEqual(parseCompilerError('compiler finished successfully'), undefined);
 	});
 
-	// Starts a real debug session: VS Code runs `newtc -dap` through the
-	// extension. Uses $NEWTC if set (e.g. a development build), else the
-	// setting vsnewt.newtcPath, else the bundled newtc.
-	test('Runs a NewtonScript file in the debugger (newtc -dap)', async function () {
-		this.timeout(20000);
-		const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
-		const program = path.join(temporaryDirectory, 'hello.ns');
-		fs.writeFileSync(program, 'Print("Hello from newtc");\n');
-
+	// Debug sessions: VS Code runs newtc through the extension. Uses $NEWTC if
+	// set (e.g. a development build), else the setting vsnewt.newtcPath, else
+	// the bundled newtc. Returns the program's output and exit code.
+	async function runSession(program: string, extra: Partial<vscode.DebugConfiguration> = {}): Promise<{ output: string; exitCode?: number }> {
 		interface Message { type?: string; event?: string; body?: { output?: string; exitCode?: number } }
 		let output = '';
 		let exitCode: number | undefined;
@@ -67,19 +64,87 @@ suite('Extension Test Suite', () => {
 				resolve();
 			});
 		});
-
 		try {
-			const config: vscode.DebugConfiguration = { type: 'newtonscript', request: 'launch', name: 'Test', program };
-			if (process.env.NEWTC) {
+			const config: vscode.DebugConfiguration = { type: 'newtonscript', request: 'launch', name: 'Test', program, ...extra };
+			if (process.env.NEWTC && !config.newtc) {
 				config.newtc = process.env.NEWTC;
 			}
 			assert.ok(await vscode.debug.startDebugging(undefined, config), 'debug session did not start');
 			await ended;
+		} finally {
+			tracker.dispose();
+		}
+		return { output, exitCode };
+	}
+
+	function writeProgram(): { directory: string; program: string } {
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
+		const program = path.join(directory, 'hello.ns');
+		fs.writeFileSync(program, 'Print("Hello from newtc");\n');
+		return { directory, program };
+	}
+
+	test('Runs a NewtonScript file in the debugger (newtc -dap)', async function () {
+		this.timeout(20000);
+		const { directory, program } = writeProgram();
+		try {
+			const { output, exitCode } = await runSession(program);
 			assert.strictEqual(exitCode, 0, output);
 			assert.ok(output.includes('"Hello from newtc"'), output);
 		} finally {
-			tracker.dispose();
-			fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	test('Writes the DAP messages to a log ("log": newtc -dap-log)', async function () {
+		this.timeout(20000);
+		const { directory, program } = writeProgram();
+		const log = path.join(directory, 'dap.log');
+		try {
+			const { exitCode } = await runSession(program, { log });
+			assert.strictEqual(exitCode, 0);
+			const text = fs.readFileSync(log, 'utf8');
+			assert.ok(text.startsWith('-> ') && text.includes('"command":"initialize"'), text);
+			assert.ok(text.includes('<- ') && text.includes('"event":"terminated"'), text);
+		} finally {
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	// For working on newtc: VS Code connects to `newtc -dap-server <port>`
+	// (started here; in real use in a debugger). Needs $NEWTC.
+	test('Connects to newtc -dap-server ("debugServer")', async function () {
+		const newtc = process.env.NEWTC;
+		if (!newtc) {
+			this.skip();
+		}
+		this.timeout(20000);
+		const port = await new Promise<number>((resolve) => {
+			const server = net.createServer();
+			server.listen(0, '127.0.0.1', () => {
+				const address = server.address() as net.AddressInfo;
+				server.close(() => resolve(address.port));
+			});
+		});
+		const { directory, program } = writeProgram();
+		const server = spawn(newtc as string, ['-dap-server', String(port)]);
+		try {
+			await new Promise<void>((resolve, reject) => {
+				server.stderr.on('data', (data: Buffer) => {
+					if (data.toString().includes('waiting for a DAP client')) {
+						resolve();
+					}
+				});
+				server.on('exit', () => reject(new Error('newtc -dap-server exited')));
+			});
+			const exited = new Promise<number | null>((resolve) => server.on('exit', (code) => resolve(code)));
+			const { output, exitCode } = await runSession(program, { debugServer: port });
+			assert.strictEqual(exitCode, 0, output);
+			assert.ok(output.includes('"Hello from newtc"'), output);
+			assert.strictEqual(await exited, 0);
+		} finally {
+			server.kill();
+			fs.rmSync(directory, { recursive: true, force: true });
 		}
 	});
 

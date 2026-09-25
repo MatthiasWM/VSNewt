@@ -86,6 +86,14 @@
               "newtc": {
                 "type": "string",
                 "description": "Path of the newtc executable. Default: the setting vsnewt.newtcPath, else the newtc that comes with the extension."
+              },
+              "log": {
+                "type": "string",
+                "description": "Write all Debug Adapter Protocol messages to this file (newtc -dap-log)."
+              },
+              "debugServer": {
+                "type": "number",
+                "description": "For working on newtc: connect to a newtc started as `newtc -dap-server <port>` (e.g. in a debugger) instead of starting one."
               }
             }
           }
@@ -107,6 +115,17 @@
               "request": "launch",
               "name": "Run NewtonScript file",
               "program": "^\"\\${file}\""
+            }
+          },
+          {
+            "label": "NewtonScript: Connect to newtc -dap-server",
+            "description": "For working on newtc: run `newtc -dap-server 4711` (e.g. in lldb), then start this configuration.",
+            "body": {
+              "type": "newtonscript",
+              "request": "launch",
+              "name": "Run NewtonScript file (newtc -dap-server)",
+              "program": "^\"\\${file}\"",
+              "debugServer": 4711
             }
           }
         ]

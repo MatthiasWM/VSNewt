@@ -158,8 +158,15 @@ class NewtcDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
 	constructor(private readonly extensionPath: string) {}
 
 	createDebugAdapterDescriptor(session: vscode.DebugSession): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
+		// "debugServer": connect to a newtc started as `newtc -dap-server <port>`
+		// (e.g. in lldb, to debug newtc itself)
+		if (session.configuration.debugServer) {
+			return new vscode.DebugAdapterServer(Number(session.configuration.debugServer));
+		}
 		const newtc = session.configuration.newtc || compilerPath(this.extensionPath);
-		return new vscode.DebugAdapterExecutable(newtc, ['-dap']);
+		// "log": newtc writes all DAP messages to this file
+		const log: string[] = session.configuration.log ? ['-dap-log', session.configuration.log] : [];
+		return new vscode.DebugAdapterExecutable(newtc, [...log, '-dap']);
 	}
 }
 
