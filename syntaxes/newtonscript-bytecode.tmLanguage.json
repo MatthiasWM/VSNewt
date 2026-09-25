@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "NewtonScript Bytecode",
+  "scopeName": "source.newtonscript-bytecode",
+  "comment": "The bytecode listings newtc -dap shows for functions without source: '   25: GetVar               t'",
+  "patterns": [
+    {
+      "match": "^\\s*(\\d+)(:)\\s*([A-Za-z]+)",
+      "captures": {
+        "1": { "name": "constant.numeric.pc.newtonscript-bytecode" },
+        "2": { "name": "punctuation.separator.newtonscript-bytecode" },
+        "3": { "name": "keyword.other.opcode.newtonscript-bytecode" }
+      }
+    },
+    { "match": "\"(\\\\.|[^\"\\\\])*\"", "name": "string.quoted.double.newtonscript-bytecode" },
+    { "match": "'\\|[^|]*\\||'[A-Za-z_][A-Za-z0-9_]*", "name": "constant.other.symbol.newtonscript-bytecode" },
+    { "match": "\\$\\S", "name": "constant.character.newtonscript-bytecode" },
+    { "match": "\\b(nil|true)\\b", "name": "constant.language.newtonscript-bytecode" },
+    { "match": "-?\\b\\d+(\\.\\d+)?\\b", "name": "constant.numeric.newtonscript-bytecode" },
+    { "match": "\\\\\\\\.*$", "name": "comment.line.newtonscript-bytecode" }
+  ]
+}

@@ -148,6 +148,62 @@ suite('Extension Test Suite', () => {
 		}
 	});
 
+	// Bytecode listings: at a stop, the top frame's source is the function's
+	// disassembly, a virtual document in the newtonscript-bytecode language.
+	test('Shows a bytecode listing for a stopped function', async function () {
+		this.timeout(20000);
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
+		const program = path.join(directory, 'stop.ns');
+		fs.writeFileSync(program, 'global Halt(x) begin BreakLoop(); x + 1; end;\nPrint(Halt(41));\n');
+		const stopped = new Promise<vscode.DebugSession>((resolve) => {
+			const tracker = vscode.debug.registerDebugAdapterTrackerFactory('newtonscript', {
+				createDebugAdapterTracker: (session) => ({
+					onDidSendMessage: (message: { type?: string; event?: string }) => {
+						if (message.type === 'event' && message.event === 'stopped') {
+							tracker.dispose();
+							resolve(session);
+						}
+					},
+				}),
+			});
+		});
+		try {
+			const config: vscode.DebugConfiguration = { type: 'newtonscript', request: 'launch', name: 'Listing', program };
+			if (process.env.NEWTC) {
+				config.newtc = process.env.NEWTC;
+			}
+			assert.ok(await vscode.debug.startDebugging(undefined, config), 'debug session did not start');
+			const session = await stopped;
+			const trace = await session.customRequest('stackTrace', { threadId: 1 });
+			const frame = trace.stackFrames[0];
+			assert.strictEqual(frame.name, 'Halt');
+			// VS Code registers its provider for debug: documents when the debug
+			// view comes up; a test runs before that, so open it and retry.
+			await vscode.commands.executeCommand('workbench.view.debug');
+			let document: vscode.TextDocument | undefined;
+			for (let attempt = 0; !document && attempt < 40; attempt++) {
+				try {
+					document = await vscode.workspace.openTextDocument(vscode.debug.asDebugSourceUri(frame.source, session));
+				} catch {
+					await new Promise((resolve) => setTimeout(resolve, 250));
+				}
+			}
+			assert.ok(document, 'could not open the listing');
+			assert.strictEqual(document.languageId, 'newtonscript-bytecode');
+			assert.ok(document.lineAt(frame.line - 1).text.includes('Pop'), document.getText());
+			const ended = new Promise<void>((resolve) => {
+				const listener = vscode.debug.onDidTerminateDebugSession(() => {
+					listener.dispose();
+					resolve();
+				});
+			});
+			await session.customRequest('continue', { threadId: 1 });
+			await ended;
+		} finally {
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
 	test('Builds NSOF compiler and execution arguments', () => {
 		const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
 		const sourcePath = path.join(temporaryDirectory, 'test.ns');

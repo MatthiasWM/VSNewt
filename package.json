@@ -58,11 +58,26 @@
           ".newtonscript"
         ],
         "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "newtonscript-bytecode",
+        "aliases": [
+          "NewtonScript Bytecode"
+        ],
+        "extensions": [
+          ".nsbc"
+        ],
+        "mimetypes": [
+          "text/x-newtonscript-bytecode"
+        ]
       }
     ],
     "breakpoints": [
       {
         "language": "newtonscript"
+      },
+      {
+        "language": "newtonscript-bytecode"
       }
     ],
     "debuggers": [
@@ -70,7 +85,8 @@
         "type": "newtonscript",
         "label": "NewtonScript",
         "languages": [
-          "newtonscript"
+          "newtonscript",
+          "newtonscript-bytecode"
         ],
         "configurationAttributes": {
           "launch": {
@@ -140,7 +156,14 @@
           "markdownDescription": "Path of the `newtc` executable, e.g. a development build. Empty: use the `newtc` that comes with the extension (`bin/<platform>-<arch>/newtc`)."
         }
       }
-    }
+    },
+    "grammars": [
+      {
+        "language": "newtonscript-bytecode",
+        "scopeName": "source.newtonscript-bytecode",
+        "path": "./syntaxes/newtonscript-bytecode.tmLanguage.json"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
