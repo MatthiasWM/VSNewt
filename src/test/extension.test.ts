@@ -148,35 +148,57 @@ suite('Extension Test Suite', () => {
 		}
 	});
 
-	// Bytecode listings: at a stop, the top frame's source is the function's
-	// disassembly, a virtual document in the newtonscript-bytecode language.
-	test('Shows a bytecode listing for a stopped function', async function () {
+	// At a stop, a function compiled from the file (newtc -dap compiles with
+	// line tables) points at its line in the file; a function without a file
+	// (made with Compile) at its bytecode listing, a virtual document in the
+	// newtonscript-bytecode language.
+	test('Shows the source line, or a bytecode listing', async function () {
 		this.timeout(20000);
 		const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
 		const program = path.join(directory, 'stop.ns');
-		fs.writeFileSync(program, 'global Halt(x) begin BreakLoop(); x + 1; end;\nPrint(Halt(41));\n');
-		const stopped = new Promise<vscode.DebugSession>((resolve) => {
-			const tracker = vscode.debug.registerDebugAdapterTrackerFactory('newtonscript', {
-				createDebugAdapterTracker: (session) => ({
-					onDidSendMessage: (message: { type?: string; event?: string }) => {
-						if (message.type === 'event' && message.event === 'stopped') {
-							tracker.dispose();
-							resolve(session);
-						}
-					},
-				}),
-			});
+		fs.writeFileSync(program, [
+			'global Halt(x) begin BreakLoop(); x + 1; end;',
+			'DefGlobalFn(\'Halt2, call Compile("func(x) begin BreakLoop(); x + 2; end") with ());',
+			'Print(Halt(41));',
+			'Print(Halt2(40));',
+			''].join('\n'));
+		let stops = 0;
+		let onStop: (session: vscode.DebugSession) => void = () => {};
+		const tracker = vscode.debug.registerDebugAdapterTrackerFactory('newtonscript', {
+			createDebugAdapterTracker: (session) => ({
+				onDidSendMessage: (message: { type?: string; event?: string }) => {
+					if (message.type === 'event' && message.event === 'stopped') {
+						stops++;
+						onStop(session);
+					}
+				},
+			}),
 		});
+		const nextStop = () => new Promise<vscode.DebugSession>((resolve) => { onStop = resolve; });
 		try {
 			const config: vscode.DebugConfiguration = { type: 'newtonscript', request: 'launch', name: 'Listing', program };
 			if (process.env.NEWTC) {
 				config.newtc = process.env.NEWTC;
 			}
+			let stopped = nextStop();
 			assert.ok(await vscode.debug.startDebugging(undefined, config), 'debug session did not start');
-			const session = await stopped;
-			const trace = await session.customRequest('stackTrace', { threadId: 1 });
-			const frame = trace.stackFrames[0];
+			let session = await stopped;
+
+			// source level: the file itself, line 1
+			let trace = await session.customRequest('stackTrace', { threadId: 1 });
+			let frame = trace.stackFrames[0];
 			assert.strictEqual(frame.name, 'Halt');
+			assert.strictEqual(fs.realpathSync(frame.source.path), fs.realpathSync(program));
+			assert.strictEqual(frame.line, 1);
+
+			// bytecode level: a listing
+			stopped = nextStop();
+			await session.customRequest('continue', { threadId: 1 });
+			session = await stopped;
+			trace = await session.customRequest('stackTrace', { threadId: 1 });
+			frame = trace.stackFrames[0];
+			assert.strictEqual(frame.name, 'Halt2');
+			assert.ok(frame.source.sourceReference > 0, JSON.stringify(frame));
 			// VS Code registers its provider for debug: documents when the debug
 			// view comes up; a test runs before that, so open it and retry.
 			await vscode.commands.executeCommand('workbench.view.debug');
@@ -191,6 +213,8 @@ suite('Extension Test Suite', () => {
 			assert.ok(document, 'could not open the listing');
 			assert.strictEqual(document.languageId, 'newtonscript-bytecode');
 			assert.ok(document.lineAt(frame.line - 1).text.includes('Pop'), document.getText());
+			assert.strictEqual(stops, 2);
+
 			const ended = new Promise<void>((resolve) => {
 				const listener = vscode.debug.onDidTerminateDebugSession(() => {
 					listener.dispose();
@@ -200,6 +224,61 @@ suite('Extension Test Suite', () => {
 			await session.customRequest('continue', { threadId: 1 });
 			await ended;
 		} finally {
+			tracker.dispose();
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	// A breakpoint set in the editor (a SourceBreakpoint) reaches newtc before
+	// the program is compiled, stays pending, and stops the program at its
+	// line once the code exists.
+	test('Stops at a breakpoint set in the source file', async function () {
+		this.timeout(20000);
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
+		const program = path.join(directory, 'lines.ns');
+		fs.writeFileSync(program, [
+			'global Twice(x)',
+			'begin',
+			'  local y := x * 2;',
+			'  y;',
+			'end;',
+			'Print(Twice(21));',
+			''].join('\n'));
+		const breakpoint = new vscode.SourceBreakpoint(
+			new vscode.Location(vscode.Uri.file(program), new vscode.Position(3, 0)));   // line 4
+		vscode.debug.addBreakpoints([breakpoint]);
+		let onStop: (session: vscode.DebugSession) => void = () => {};
+		const stopped = new Promise<vscode.DebugSession>((resolve) => { onStop = resolve; });
+		const tracker = vscode.debug.registerDebugAdapterTrackerFactory('newtonscript', {
+			createDebugAdapterTracker: (session) => ({
+				onDidSendMessage: (message: { type?: string; event?: string }) => {
+					if (message.type === 'event' && message.event === 'stopped') {
+						onStop(session);
+					}
+				},
+			}),
+		});
+		try {
+			const config: vscode.DebugConfiguration = { type: 'newtonscript', request: 'launch', name: 'Lines', program };
+			if (process.env.NEWTC) {
+				config.newtc = process.env.NEWTC;
+			}
+			assert.ok(await vscode.debug.startDebugging(undefined, config), 'debug session did not start');
+			const session = await stopped;
+			const trace = await session.customRequest('stackTrace', { threadId: 1 });
+			assert.strictEqual(trace.stackFrames[0].name, 'Twice');
+			assert.strictEqual(trace.stackFrames[0].line, 4);
+			const ended = new Promise<void>((resolve) => {
+				const listener = vscode.debug.onDidTerminateDebugSession(() => {
+					listener.dispose();
+					resolve();
+				});
+			});
+			await session.customRequest('continue', { threadId: 1 });
+			await ended;
+		} finally {
+			tracker.dispose();
+			vscode.debug.removeBreakpoints([breakpoint]);
 			fs.rmSync(directory, { recursive: true, force: true });
 		}
 	});

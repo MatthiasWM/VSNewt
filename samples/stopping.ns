@@ -1,6 +1,7 @@
-// Stopping in the debugger (F5). Each stop shows in the Call Stack view,
-// with the bytecode PC of every function; the Debug Console shows the
-// instruction where it stopped. Continue (F5) goes on to the next stop.
+// Stopping in the debugger (F5). Each stop highlights the line in this
+// file and shows the Call Stack and Variables; the Debug Console shows the
+// bytecode instruction where it stopped. Continue (F5) goes on to the next
+// stop.
 
 global Square(x)
 begin
@@ -16,7 +17,8 @@ begin
   total;
 end;
 
-// A breakpoint at PC 0 of Sum stops first (source breakpoints come later).
+// A breakpoint the program sets itself (at PC 0 of Sum) stops first. Set
+// your own by clicking left of a line number, e.g. on the Print below.
 InstallBreakPoint(functions.Sum, 0);
 Print(Sum(2));
 
