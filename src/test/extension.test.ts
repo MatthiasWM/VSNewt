@@ -283,6 +283,61 @@ suite('Extension Test Suite', () => {
 		}
 	});
 
+	// The Disassembly view: at a stop, VS Code asks newtc to "disassemble"
+	// around the frame's instructionPointerReference.
+	test('Opens the Disassembly view', async function () {
+		this.timeout(20000);
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
+		const program = path.join(directory, 'disasm.ns');
+		fs.writeFileSync(program, 'global Halt(x) begin BreakLoop(); x + 1; end;\nPrint(Halt(41));\n');
+		interface Message { type?: string; event?: string; command?: string; success?: boolean;
+			body?: { instructions?: { address: string; instruction: string; line?: number }[] } }
+		const responses: Message[] = [];
+		let onStop: (session: vscode.DebugSession) => void = () => {};
+		const stopped = new Promise<vscode.DebugSession>((resolve) => { onStop = resolve; });
+		let onDisassembled: () => void = () => {};
+		const disassembled = new Promise<void>((resolve) => { onDisassembled = resolve; });
+		const tracker = vscode.debug.registerDebugAdapterTrackerFactory('newtonscript', {
+			createDebugAdapterTracker: (session) => ({
+				onDidSendMessage: (message: Message) => {
+					if (message.type === 'event' && message.event === 'stopped') {
+						onStop(session);
+					} else if (message.type === 'response' && message.command === 'disassemble') {
+						responses.push(message);
+						onDisassembled();
+					}
+				},
+			}),
+		});
+		try {
+			const config: vscode.DebugConfiguration = { type: 'newtonscript', request: 'launch', name: 'Disasm', program };
+			if (process.env.NEWTC) {
+				config.newtc = process.env.NEWTC;
+			}
+			assert.ok(await vscode.debug.startDebugging(undefined, config), 'debug session did not start');
+			const session = await stopped;
+			await vscode.commands.executeCommand('debug.action.openDisassemblyView');
+			await Promise.race([disassembled, new Promise((resolve) => setTimeout(resolve, 8000))]);
+			// let the view finish (it asks more than once) before the session ends
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+			assert.ok(responses.length > 0, 'VS Code asked for no disassembly');
+			assert.ok(responses.every((response) => response.success), JSON.stringify(responses));
+			const instructions = responses.flatMap((response) => response.body?.instructions ?? []);
+			assert.ok(instructions.some((i) => i.instruction.startsWith('Call') && i.line === 1), JSON.stringify(instructions));
+			const ended = new Promise<void>((resolve) => {
+				const listener = vscode.debug.onDidTerminateDebugSession(() => {
+					listener.dispose();
+					resolve();
+				});
+			});
+			await session.customRequest('continue', { threadId: 1 });
+			await ended;
+		} finally {
+			tracker.dispose();
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
 	test('Builds NSOF compiler and execution arguments', () => {
 		const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
 		const sourcePath = path.join(temporaryDirectory, 'test.ns');
