@@ -9,7 +9,10 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onDebugResolve:newtonscript",
+    "onDebugDynamicConfigurations:newtonscript"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -41,7 +44,84 @@
         "command": "vsnewt.debugNsof",
         "title": "Debug NSOF with VSNewt"
       }
-    ]
+    ],
+    "languages": [
+      {
+        "id": "newtonscript",
+        "aliases": [
+          "NewtonScript",
+          "newtonscript"
+        ],
+        "extensions": [
+          ".ns",
+          ".newt",
+          ".newtonscript"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "breakpoints": [
+      {
+        "language": "newtonscript"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "newtonscript",
+        "label": "NewtonScript",
+        "languages": [
+          "newtonscript"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "The NewtonScript file to run.",
+                "default": "${file}"
+              },
+              "newtc": {
+                "type": "string",
+                "description": "Path of the newtc executable. Default: the setting vsnewt.newtcPath, else the newtc that comes with the extension."
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "newtonscript",
+            "request": "launch",
+            "name": "Run NewtonScript file",
+            "program": "${file}"
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "NewtonScript: Run file",
+            "description": "Run a NewtonScript file with newtc in the debugger.",
+            "body": {
+              "type": "newtonscript",
+              "request": "launch",
+              "name": "Run NewtonScript file",
+              "program": "^\"\\${file}\""
+            }
+          }
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "VSNewt",
+      "properties": {
+        "vsnewt.newtcPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path of the `newtc` executable, e.g. a development build. Empty: use the `newtc` that comes with the extension (`bin/<platform>-<arch>/newtc`)."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

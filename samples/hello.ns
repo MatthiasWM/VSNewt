@@ -1,0 +1,13 @@
+// Run with F5 (VSNewt: NewtonScript debugger, newtc -dap).
+// Print's output appears in the Debug Console.
+
+global Greet(name)
+begin
+  "Hello, " & name & "!";
+end;
+
+Print(Greet("Newton"));
+Print({name: "MessagePad", model: 2100, ram: [4, 'MB]});
+foreach i in [1, 2, 3] do
+  Write(i & " ");
+Print("done");

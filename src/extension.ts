@@ -5,7 +5,17 @@ import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
+// The newtc to run: the setting vsnewt.newtcPath (e.g. a development build),
+// else the one that comes with the extension.
 function compilerPath(extensionPath: string): string {
+	const configured = vscode.workspace.getConfiguration('vsnewt').get<string>('newtcPath', '').trim();
+	if (configured) {
+		if (!fs.existsSync(configured)) {
+			throw new Error(`newtc not found: ${configured} (setting vsnewt.newtcPath)`);
+		}
+		return configured;
+	}
+
 	const platform = process.platform;
 	if (platform !== 'win32' && platform !== 'linux' && platform !== 'darwin') {
 		throw new Error(`Unsupported platform: ${platform}`);
@@ -142,9 +152,44 @@ function runCompiler(extensionPath: string, args: string[], outputChannel: vscod
 	});
 }
 
+// Debugging: VS Code talks the Debug Adapter Protocol with `newtc -dap`.
+// All debugger logic is in newtc; this only tells VS Code how to start it.
+class NewtcDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
+	constructor(private readonly extensionPath: string) {}
+
+	createDebugAdapterDescriptor(session: vscode.DebugSession): vscode.ProviderResult<vscode.DebugAdapterDescriptor> {
+		const newtc = session.configuration.newtc || compilerPath(this.extensionPath);
+		return new vscode.DebugAdapterExecutable(newtc, ['-dap']);
+	}
+}
+
+// F5 without a launch.json: run the NewtonScript file in the active editor.
+class NewtonScriptConfigurationProvider implements vscode.DebugConfigurationProvider {
+	resolveDebugConfiguration(folder: vscode.WorkspaceFolder | undefined, config: vscode.DebugConfiguration): vscode.ProviderResult<vscode.DebugConfiguration> {
+		if (!config.type && !config.request && !config.name) {
+			const editor = vscode.window.activeTextEditor;
+			if (editor && editor.document.languageId === 'newtonscript') {
+				config.type = 'newtonscript';
+				config.request = 'launch';
+				config.name = 'Run NewtonScript file';
+				config.program = '${file}';
+			}
+		}
+		if (!config.program) {
+			return vscode.window.showErrorMessage('Open a NewtonScript file to run, or set "program" in launch.json.').then(() => undefined);
+		}
+		return config;
+	}
+}
+
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
+
+	context.subscriptions.push(vscode.debug.registerDebugAdapterDescriptorFactory(
+		'newtonscript', new NewtcDebugAdapterFactory(context.extensionPath)));
+	context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider(
+		'newtonscript', new NewtonScriptConfigurationProvider()));
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
 	// This line of code will only be executed once when your extension is activated

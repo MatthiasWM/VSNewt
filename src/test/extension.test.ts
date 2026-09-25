@@ -38,6 +38,51 @@ suite('Extension Test Suite', () => {
 		assert.strictEqual(parseCompilerError('compiler finished successfully'), undefined);
 	});
 
+	// Starts a real debug session: VS Code runs `newtc -dap` through the
+	// extension. Uses $NEWTC if set (e.g. a development build), else the
+	// setting vsnewt.newtcPath, else the bundled newtc.
+	test('Runs a NewtonScript file in the debugger (newtc -dap)', async function () {
+		this.timeout(20000);
+		const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
+		const program = path.join(temporaryDirectory, 'hello.ns');
+		fs.writeFileSync(program, 'Print("Hello from newtc");\n');
+
+		interface Message { type?: string; event?: string; body?: { output?: string; exitCode?: number } }
+		let output = '';
+		let exitCode: number | undefined;
+		const tracker = vscode.debug.registerDebugAdapterTrackerFactory('newtonscript', {
+			createDebugAdapterTracker: () => ({
+				onDidSendMessage: (message: Message) => {
+					if (message.type === 'event' && message.event === 'output') {
+						output += message.body?.output ?? '';
+					} else if (message.type === 'event' && message.event === 'exited') {
+						exitCode = message.body?.exitCode;
+					}
+				},
+			}),
+		});
+		const ended = new Promise<void>((resolve) => {
+			const listener = vscode.debug.onDidTerminateDebugSession(() => {
+				listener.dispose();
+				resolve();
+			});
+		});
+
+		try {
+			const config: vscode.DebugConfiguration = { type: 'newtonscript', request: 'launch', name: 'Test', program };
+			if (process.env.NEWTC) {
+				config.newtc = process.env.NEWTC;
+			}
+			assert.ok(await vscode.debug.startDebugging(undefined, config), 'debug session did not start');
+			await ended;
+			assert.strictEqual(exitCode, 0, output);
+			assert.ok(output.includes('"Hello from newtc"'), output);
+		} finally {
+			tracker.dispose();
+			fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+		}
+	});
+
 	test('Builds NSOF compiler and execution arguments', () => {
 		const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
 		const sourcePath = path.join(temporaryDirectory, 'test.ns');

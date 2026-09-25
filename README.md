@@ -28,6 +28,42 @@ The package command runs `newtc -script <source> -opkg <output>`. The source arg
 
 To create an NSOF binary, use `VSNewt: Compile NSOF with VSNewt`. It runs `newtc -script <source> -onsof <output>` and defaults the output to a `.nsof` file beside the source. The resulting `.nsof` file can be started with `VSNewt: Run NSOF with VSNewt`, which runs `newtc -nsof <file> -run`, or with `VSNewt: Debug NSOF with VSNewt`, which runs `newtc -nsof <file> -dbg`.
 
+## Run and debug NewtonScript
+
+Press **F5** in a NewtonScript file (`.ns`, `.newt`, `.newtonscript`) and
+pick **NewtonScript**: VS Code starts `newtc -dap` and runs the file. Its
+output appears in the **Debug Console**. All debugger logic is in `newtc`
+(Debug Adapter Protocol); the extension only tells VS Code how to start it.
+Without a `launch.json`, F5 runs the file in the active editor. A launch
+configuration looks like this:
+
+```json
+{
+  "type": "newtonscript",
+  "request": "launch",
+  "name": "Run NewtonScript file",
+  "program": "${file}"
+}
+```
+
+Optional: `"newtc": "/path/to/newtc"` for this configuration only.
+
+Stepping, breakpoints, and variables come step by step with `newtc`
+(bytecode level first, then source level).
+
+## Using a development build of newtc
+
+Set **VSNewt: Newtc Path** (`vsnewt.newtcPath`) in the user settings to the
+`newtc` you build, e.g. `/path/to/newton-framework/build/VSCode/newtc`. It is
+used for debugging and the compile commands. Empty: the bundled binary.
+
+To work on the extension: open this folder in VS Code and start **Run
+Extension (samples)**. A second VS Code window (Extension Development Host)
+opens the `samples` folder; open `hello.ns` there and press F5.
+
+Tests: `npm test` also starts a debug session. `NEWTC=/path/to/newtc npm test`
+uses that newtc.
+
 ## Build and package
 
 Install dependencies, add the binaries, and create the VSIX:
