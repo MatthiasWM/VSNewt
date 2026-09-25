@@ -1,7 +1,7 @@
 // Pause a running program: press F5, then Pause (F6). It stops wherever
 // the loop is; look at n in the Variables view, type expressions like
-// n * 2 or n := 0 into the Debug Console, step with F10/F11/Shift-F11
-// (one bytecode instruction at a time for now), or stop with Shift-F5.
+// n * 2 or n := 0 into the Debug Console, step line by line with
+// F10/F11/Shift-F11, or stop with Shift-F5.
 
 global Spin()
 begin
