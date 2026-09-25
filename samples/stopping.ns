@@ -1,0 +1,29 @@
+// Stopping in the debugger (F5). Each stop shows in the Call Stack view,
+// with the bytecode PC of every function; the Debug Console shows the
+// instruction where it stopped. Continue (F5) goes on to the next stop.
+
+global Square(x)
+begin
+  BreakLoop();          // stops in every call: "Paused in BreakLoop()"
+  x * x;
+end;
+
+global Sum(n)
+begin
+  local total := 0;
+  for i := 1 to n do
+    total := total + Square(i);
+  total;
+end;
+
+// A breakpoint at PC 0 of Sum stops first (source breakpoints come later).
+InstallBreakPoint(functions.Sum, 0);
+Print(Sum(2));
+
+// An exception stops if "All Exceptions" is checked in the Breakpoints
+// view (on by default), even if the program catches it.
+try
+  Sum('two)
+onexception |evt.ex| do
+  Print("caught it");
+Print("done");
