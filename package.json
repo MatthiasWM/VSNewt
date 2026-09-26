@@ -96,7 +96,7 @@
             "properties": {
               "program": {
                 "type": "string",
-                "description": "The NewtonScript file to run.",
+                "description": "What to run: a NewtonScript file (.ns) is compiled and run; a package (.pkg) is loaded with its debug map and installed (its InstallScript runs).",
                 "default": "${file}"
               },
               "newtc": {
@@ -106,6 +106,16 @@
               "log": {
                 "type": "string",
                 "description": "Write all Debug Adapter Protocol messages to this file (newtc -dap-log)."
+              },
+              "debugMap": {
+                "type": "string",
+                "description": "For a package: the debug map (.nsdbg, from `newtc -pkg <package> -odecompile <file.ns>`) that shows its functions in the decompiled source. Default: the .nsdbg next to the package with the same name, if there is one."
+              },
+              "args": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "More newtc arguments, run in order before the program (e.g. [\"-pkg\", \"lib.pkg\", \"-nsdbg\", \"lib.nsdbg\"]). Not used with debugServer.",
+                "default": []
               },
               "debugServer": {
                 "type": "number",
@@ -131,6 +141,16 @@
               "request": "launch",
               "name": "Run NewtonScript file",
               "program": "^\"\\${file}\""
+            }
+          },
+          {
+            "label": "NewtonScript: Debug a package",
+            "description": "Install a package in newtc and debug it in its decompiled source (newtc -pkg <package> -odecompile <name>.ns writes <name>.nsdbg).",
+            "body": {
+              "type": "newtonscript",
+              "request": "launch",
+              "name": "Debug package",
+              "program": "^\"\\${workspaceFolder}/${1:app}.pkg\""
             }
           },
           {

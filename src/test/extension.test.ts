@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as net from 'net';
 import * as os from 'os';
@@ -279,6 +279,88 @@ suite('Extension Test Suite', () => {
 		} finally {
 			tracker.dispose();
 			vscode.debug.removeBreakpoints([breakpoint]);
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	// A package as the program: newtc loads it with the debug map next to it
+	// (written by -odecompile) and installs it; a breakpoint in the
+	// decompiled source stops in its InstallScript. Needs $NEWTC (to make
+	// the package).
+	function writePackage(newtc: string): { directory: string; pkg: string; source: string; line: number } {
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
+		const pkg = path.join(directory, 'hello.pkg');
+		const source = path.join(directory, 'hello.ns');
+		spawnSync(newtc, ['-hello', '-opkg', pkg]);
+		spawnSync(newtc, ['-pkg', pkg, '-odecompile', source]);
+		const line = fs.readFileSync(source, 'utf8').split('\n').findIndex((text) => text.includes('if HasSlot(')) + 1;
+		return { directory, pkg, source, line };
+	}
+
+	test('Debugs a package in its decompiled source', async function () {
+		const newtc = process.env.NEWTC;
+		if (!newtc) {
+			this.skip();
+		}
+		this.timeout(20000);
+		const { directory, pkg, source, line } = writePackage(newtc as string);
+		const breakpoint = new vscode.SourceBreakpoint(
+			new vscode.Location(vscode.Uri.file(source), new vscode.Position(line - 1, 0)));
+		vscode.debug.addBreakpoints([breakpoint]);
+		let output = '';
+		let onStop: (session: vscode.DebugSession) => void = () => {};
+		const stopped = new Promise<vscode.DebugSession>((resolve) => { onStop = resolve; });
+		const tracker = vscode.debug.registerDebugAdapterTrackerFactory('newtonscript', {
+			createDebugAdapterTracker: (session) => ({
+				onDidSendMessage: (message: { type?: string; event?: string; body?: { output?: string } }) => {
+					if (message.type === 'event' && message.event === 'output') {
+						output += message.body?.output ?? '';
+					} else if (message.type === 'event' && message.event === 'stopped') {
+						onStop(session);
+					}
+				},
+			}),
+		});
+		try {
+			const config: vscode.DebugConfiguration = { type: 'newtonscript', request: 'launch', name: 'Package', program: pkg, newtc };
+			assert.ok(await vscode.debug.startDebugging(undefined, config), 'debug session did not start');
+			const session = await stopped;
+			const trace = await session.customRequest('stackTrace', { threadId: 1 });
+			assert.ok(trace.stackFrames[0].name.endsWith('InstallScript'), trace.stackFrames[0].name);
+			assert.strictEqual(trace.stackFrames[0].source.name, 'hello.ns');
+			assert.strictEqual(trace.stackFrames[0].line, line);
+			assert.ok(output.includes('2 of 2 functions found'), output);
+			const ended = new Promise<void>((resolve) => {
+				const listener = vscode.debug.onDidTerminateDebugSession(() => {
+					listener.dispose();
+					resolve();
+				});
+			});
+			await session.customRequest('continue', { threadId: 1 });
+			await ended;
+		} finally {
+			tracker.dispose();
+			vscode.debug.removeBreakpoints([breakpoint]);
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	// "args": newtc arguments before -dap; here they load the package and its
+	// map for a program that uses it (ref0).
+	test('Passes "args" to newtc', async function () {
+		const newtc = process.env.NEWTC;
+		if (!newtc) {
+			this.skip();
+		}
+		this.timeout(20000);
+		const { directory, pkg } = writePackage(newtc as string);
+		const program = path.join(directory, 'call.ns');
+		fs.writeFileSync(program, 'Print(ref0.part[0].data.text);\n');
+		try {
+			const { output, exitCode } = await runSession(program, { args: ['-pkg', pkg] });
+			assert.strictEqual(exitCode, 0, output);
+			assert.ok(output.includes('"Hello"'), output);
+		} finally {
 			fs.rmSync(directory, { recursive: true, force: true });
 		}
 	});

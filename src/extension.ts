@@ -166,7 +166,9 @@ class NewtcDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
 		const newtc = session.configuration.newtc || compilerPath(this.extensionPath);
 		// "log": newtc writes all DAP messages to this file
 		const log: string[] = session.configuration.log ? ['-dap-log', session.configuration.log] : [];
-		return new vscode.DebugAdapterExecutable(newtc, [...log, '-dap']);
+		// "args": more newtc arguments, before -dap
+		const args: string[] = Array.isArray(session.configuration.args) ? session.configuration.args.map(String) : [];
+		return new vscode.DebugAdapterExecutable(newtc, [...log, ...args, '-dap']);
 	}
 }
 
@@ -183,7 +185,7 @@ class NewtonScriptConfigurationProvider implements vscode.DebugConfigurationProv
 			}
 		}
 		if (!config.program) {
-			return vscode.window.showErrorMessage('Open a NewtonScript file to run, or set "program" in launch.json.').then(() => undefined);
+			return vscode.window.showErrorMessage('Open a NewtonScript file to run, or set "program" (a .ns file or a .pkg) in launch.json.').then(() => undefined);
 		}
 		return config;
 	}
