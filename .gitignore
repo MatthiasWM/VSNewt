@@ -3,3 +3,9 @@ dist
 node_modules
 .vscode-test/
 *.vsix
+
+# newtc binaries: built by newton-framework/Matt/tools/build_vsnewt_newtc.sh,
+# shipped inside the VSIX
+bin/*/newtc
+bin/*/newtc.exe
+.DS_Store

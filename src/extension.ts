@@ -1,5 +1,6 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
+// VSNewt: NewtonScript in VS Code. All the work is done by newtc (compiler,
+// debugger); this file only starts it: the compile commands, and the
+// debug adapter (newtc -dap).
 import * as vscode from 'vscode';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
@@ -192,28 +193,12 @@ class NewtonScriptConfigurationProvider implements vscode.DebugConfigurationProv
 }
 
 // This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(vscode.debug.registerDebugAdapterDescriptorFactory(
 		'newtonscript', new NewtcDebugAdapterFactory(context.extensionPath)));
 	context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider(
 		'newtonscript', new NewtonScriptConfigurationProvider()));
-
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "vsnewt" is now active!');
-
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('vsnewt.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from VSNewt!');
-	});
-
-	context.subscriptions.push(disposable);
 
 	const output = vscode.window.createOutputChannel('VSNewt Compiler');
 	context.subscriptions.push(output);

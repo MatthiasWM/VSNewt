@@ -1,14 +1,33 @@
 {
   "name": "vsnewt",
-  "displayName": "VSNewt",
-  "description": "",
-  "version": "0.0.1",
+  "displayName": "NewtonScript (VSNewt)",
+  "description": "Edit, compile, run, and debug NewtonScript (Apple Newton) with the newtc compiler and debugger.",
+  "version": "0.1.0",
+  "publisher": "MatthiasWM",
+  "license": "MIT",
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MatthiasWM/VSNewt.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MatthiasWM/VSNewt/issues"
+  },
+  "keywords": [
+    "NewtonScript",
+    "Newton",
+    "Apple Newton",
+    "MessagePad",
+    "NTK",
+    "debugger"
+  ],
+  "categories": [
+    "Programming Languages",
+    "Debuggers"
+  ],
   "engines": {
     "vscode": "^1.137.0"
   },
-  "categories": [
-    "Other"
-  ],
   "activationEvents": [
     "onDebugResolve:newtonscript",
     "onDebugDynamicConfigurations:newtonscript"
@@ -17,32 +36,34 @@
   "contributes": {
     "commands": [
       {
-        "command": "vsnewt.helloWorld",
-        "title": "Hello World"
-      },
-      {
         "command": "vsnewt.compile",
-        "title": "Compile with VSNewt"
+        "title": "Compile with VSNewt",
+        "category": "NewtonScript"
       },
       {
         "command": "vsnewt.compileGenerated",
-        "title": "Compile with VSNewt for debugging"
+        "title": "Compile with VSNewt for debugging",
+        "category": "NewtonScript"
       },
       {
         "command": "vsnewt.compileNsof",
-        "title": "Compile NSOF with VSNewt"
+        "title": "Compile NSOF with VSNewt",
+        "category": "NewtonScript"
       },
       {
         "command": "vsnewt.compileNsofGenerated",
-        "title": "Compile NSOF with VSNewt for debugging"
+        "title": "Compile NSOF with VSNewt for debugging",
+        "category": "NewtonScript"
       },
       {
         "command": "vsnewt.runNsof",
-        "title": "Run NSOF with VSNewt"
+        "title": "Run NSOF with VSNewt",
+        "category": "NewtonScript"
       },
       {
         "command": "vsnewt.debugNsof",
-        "title": "Debug NSOF with VSNewt"
+        "title": "Debug NSOF with VSNewt",
+        "category": "NewtonScript"
       }
     ],
     "languages": [
@@ -113,7 +134,9 @@
               },
               "args": {
                 "type": "array",
-                "items": { "type": "string" },
+                "items": {
+                  "type": "string"
+                },
                 "description": "More newtc arguments, run in order before the program (e.g. [\"-pkg\", \"lib.pkg\", \"-nsdbg\", \"lib.nsdbg\"]). Not used with debugServer.",
                 "default": []
               },
@@ -179,6 +202,11 @@
     },
     "grammars": [
       {
+        "language": "newtonscript",
+        "scopeName": "source.newtonscript",
+        "path": "./syntaxes/newtonscript.tmLanguage.json"
+      },
+      {
         "language": "newtonscript-bytecode",
         "scopeName": "source.newtonscript-bytecode",
         "path": "./syntaxes/newtonscript-bytecode.tmLanguage.json"
@@ -189,10 +217,11 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "npm run compile && node scripts/package.mjs",
+    "package": "npm run compile && vsce package --target darwin-arm64",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "test:grammar": "vscode-tmgrammar-test -g syntaxes/newtonscript.tmLanguage.json 'test/grammar/*.test.ns'"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -203,7 +232,8 @@
     "@vscode/vsce": "^3.9.2",
     "eslint": "^10.5.0",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.61.1"
+    "typescript-eslint": "^8.61.1",
+    "vscode-tmgrammar-test": "^0.1.3"
   },
   "overrides": {
     "diff": "^8.0.4",
