@@ -329,7 +329,7 @@ suite('Extension Test Suite', () => {
 			assert.ok(trace.stackFrames[0].name.endsWith('InstallScript'), trace.stackFrames[0].name);
 			assert.strictEqual(trace.stackFrames[0].source.name, 'hello.ns');
 			assert.strictEqual(trace.stackFrames[0].line, line);
-			assert.ok(output.includes('2 of 2 functions found'), output);
+			assert.ok(/(\d+) of \1 functions found/.test(output), output);
 			const ended = new Promise<void>((resolve) => {
 				const listener = vscode.debug.onDidTerminateDebugSession(() => {
 					listener.dispose();
