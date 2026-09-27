@@ -337,6 +337,12 @@ suite('Extension Test Suite', () => {
 				});
 			});
 			await session.customRequest('continue', { threadId: 1 });
+			// newtc with FLTK opens the app in a window after installing it:
+			// close it (its close button). Without FLTK the program ends by itself.
+			await Promise.resolve(session.customRequest('evaluate', {
+				expression: "if HasSlot(functions, 'TestCloseWindow) then TestCloseWindow(GetRoot().|hello:SIG|)",
+				context: 'repl',
+			})).catch(() => undefined);
 			await ended;
 		} finally {
 			tracker.dispose();
