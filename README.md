@@ -7,8 +7,8 @@ by `newtc`, a NewtonScript compiler, runtime, and debugger built from the
 reimplementation of the Newton OS). It comes with the extension.
 
 **Early release.** It runs on **macOS 13 (Ventura) or later on Apple
-Silicon** only. There is no Newton screen yet: programs run without views
-(see [Known limitations](#known-limitations)).
+Silicon** only. Newton apps run in windows of their own; much of the Newton
+OS is still missing (see [Known limitations](#known-limitations)).
 
 ## Install
 
@@ -36,6 +36,8 @@ Silicon** only. There is no Newton screen yet: programs run without views
   - bytecode: functions without source show their disassembly, and the
     **Disassembly** view (right click in the editor, **Open Disassembly
     View**) steps one instruction at a time.
+- **Run Newton apps**: a package's app opens in a window of its own, as on a
+  Newton (see [Newton apps](#newton-apps)).
 - **Debug a package** (`.pkg`) in its decompiled source: see below.
 - **Compile** to a package or an NSOF file (commands below).
 
@@ -74,6 +76,25 @@ Then set `"program": "${workspaceFolder}/app.pkg"` (snippet **NewtonScript:
 Debug a package**) and set breakpoints in `app.ns`. The package's code
 itself stays unchanged.
 
+## Newton apps
+
+A package's app opens in a desktop window, drawn at the Mac's resolution.
+The mouse is the pen.
+
+- Views with their frames and fills, text in the Newton's fonts, pictures
+  and icons, shapes and `viewDrawScript`s.
+- Taps, drags, hiliting, buttons, checkboxes, pickers and popup menus; a tap
+  that no view takes is recognized as a tap gesture (`viewGestureScript`).
+- Timers (`AddDelayedCall` and friends, `viewIdleScript`) and modal dialogs.
+- Soups. They are kept between runs if you give `newtc` a store file:
+  `"args": ["-store", "${workspaceFolder}/app.store"]`. Without one, every run
+  starts with an empty store.
+- **Cmd-=** and **Cmd--** scale the window.
+
+nBattleship 1.4 plays to the end. The Newton's fonts are stood in for by
+Mac fonts (Espy Sans by Geneva and Verdana); the handwriting font Casual
+needs **Apple Casual** installed on the Mac, else another font is used.
+
 ## Commands
 
 In the Command Palette, under **NewtonScript**:
@@ -94,8 +115,11 @@ Compiler** output.
 ## Known limitations
 
 - macOS on Apple Silicon only, for now.
-- No views: there is no Newton screen yet. A package's `InstallScript` runs,
-  but its form isn't opened, and `-run` doesn't run NSOF files yet.
+- No Newton screen around the apps: one app runs, in its own window, without
+  the Extras drawer, the notepad, or the built-in apps.
+- No handwriting or shape recognition and no keyboard input yet; taps are
+  the only gesture.
+- `-run` doesn't run NSOF files yet.
 - Many built-in functions of the Newton ROM are not implemented yet. When a
   program calls one, `newtc` says so once in the Debug Console
   (`Fsin is not implemented yet ..., returns nil`).

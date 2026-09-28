@@ -2,7 +2,7 @@
   "name": "vsnewt",
   "displayName": "NewtonScript (VSNewt)",
   "description": "Edit, compile, run, and debug NewtonScript (Apple Newton) with the newtc compiler and debugger.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "MatthiasWM",
   "license": "MIT",
   "icon": "images/icon.png",
