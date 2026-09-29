@@ -95,6 +95,31 @@ nBattleship 1.4 plays to the end. The Newton's fonts are stood in for by
 Mac fonts (Espy Sans by Geneva and Verdana); the handwriting font Casual
 needs **Apple Casual** installed on the Mac, else another font is used.
 
+## NewtPlay: packages without VS Code
+
+NewtPlay is a Mac app that runs Newton packages: the same `newtc`, for
+anyone, without VS Code. Download `NewtPlay-<version>-macOS.zip` from the
+[Releases](https://github.com/MatthiasWM/VSNewt/releases) page, unzip it,
+and move `NewtPlay.app` to Applications. It is signed and notarized, for
+macOS 13 or later on Apple Silicon and Intel Macs.
+
+- Double-click a package (`.nspkg`, `.newtonpkg`), drop one on NewtPlay or
+  its Dock icon, or choose one in its window (**Run a Package...**, or
+  **Recent** for the last ten).
+- `.pkg` files open too (Open With, a drop, or **Run a Package...**), but
+  macOS takes a downloaded `.pkg` for an installer and checks it first;
+  renamed to `.nspkg` it opens with a double click.
+- Each package keeps its data in
+  `~/Library/Application Support/NewtPlay/<package name>/`, one store for
+  each version of the package.
+- **Make a Shortcut...** puts a small app next to the package that runs it
+  with NewtPlay; **Make an App...** one with NewtPlay inside, which runs
+  without it. Both are made (and signed) on your Mac, with the package's
+  own icon; the **File** menu makes them for the package that runs.
+- If a package stops while it starts (often data from another version of
+  it), NewtPlay says why and can start it again with new data; the old
+  data is kept.
+
 ## Commands
 
 In the Command Palette, under **NewtonScript**:
