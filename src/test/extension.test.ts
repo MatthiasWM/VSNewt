@@ -8,7 +8,7 @@ import * as path from 'path';
 // You can import and use all API from the 'vscode' module
 // as well as import your extension to test it
 import * as vscode from 'vscode';
-import { compilerArguments, nsofCompilerArguments, nsofExecutionArguments, parseCompilerError } from '../extension';
+import { compilerArguments, decompiledNames, decompiledPackage, editedSource, launchConfigurations, nsofCompilerArguments, nsofExecutionArguments, packagePath, parseCompilerError, projectName } from '../extension';
 
 suite('Extension Test Suite', () => {
 	vscode.window.showInformationMessage('Start all tests.');
@@ -422,6 +422,310 @@ suite('Extension Test Suite', () => {
 			await ended;
 		} finally {
 			tracker.dispose();
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	test('Names a new project and its package', () => {
+		assert.strictEqual(projectName('/Users/me/My App-2'), 'MyApp2');
+		assert.strictEqual(projectName('/Users/me/2048'), 'App2048');
+		assert.strictEqual(packagePath('/a/b/MyApp.ns'), '/a/b/MyApp.pkg');
+		// launch.json allows // comments; without them it is JSON
+		const launch = JSON.parse(launchConfigurations('MyApp').replace(/^\s*\/\/.*$/gm, ''));
+		assert.deepStrictEqual(launch.configurations.map((c: { name: string }) => c.name), ['Run in newtc', 'Run on Einstein', 'Run on a MessagePad']);
+		assert.strictEqual(launch.configurations[1].program, '${workspaceFolder}/MyApp.pkg');
+		assert.strictEqual(launch.configurations[1].target, 'tcp');
+	});
+
+	// F7 (vsnewt.build) builds the file in the editor (no vsnewt.main here):
+	// the new project's template, and a file with an error, shown in the
+	// editor. Uses $NEWTC if set.
+	async function withNewtc<T>(body: () => Thenable<T>): Promise<T> {
+		const settings = vscode.workspace.getConfiguration('vsnewt');
+		if (process.env.NEWTC) {
+			await settings.update('newtcPath', process.env.NEWTC, vscode.ConfigurationTarget.Global);
+		}
+		try {
+			return await body();
+		} finally {
+			if (process.env.NEWTC) {
+				await settings.update('newtcPath', undefined, vscode.ConfigurationTarget.Global);
+			}
+		}
+	}
+
+	test('Builds the new project template with F7 (vsnewt.build)', async function () {
+		this.timeout(20000);
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
+		const source = path.join(directory, 'MyApp.ns');
+		const template = fs.readFileSync(path.join(__dirname, '..', '..', 'templates', 'app.ns'), 'utf8');
+		fs.writeFileSync(source, template.replace(/\$\{name\}/g, 'MyApp').replace(/\$\{year\}/g, '2026'));
+		try {
+			await vscode.window.showTextDocument(vscode.Uri.file(source));
+			const built = await withNewtc(() => vscode.commands.executeCommand<boolean>('vsnewt.build'));
+			assert.strictEqual(built, true);
+			assert.ok(fs.existsSync(path.join(directory, 'MyApp.pkg')));
+		} finally {
+			await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	test('Shows a build error in the editor (F7)', async function () {
+		this.timeout(20000);
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
+		const source = path.join(directory, 'broken.ns');
+		fs.writeFileSync(source, 'local a := 1;\nlocal b := (a + 2;\nreturn {};\n');
+		try {
+			await vscode.window.showTextDocument(vscode.Uri.file(source));
+			const built = await withNewtc(() => vscode.commands.executeCommand<boolean>('vsnewt.build'));
+			assert.strictEqual(built, false);
+			assert.ok(!fs.existsSync(path.join(directory, 'broken.pkg')));
+			const problems = vscode.languages.getDiagnostics(vscode.Uri.file(source));
+			assert.strictEqual(problems.length, 1);
+			assert.ok(problems[0].message.includes('syntax error'), problems[0].message);
+			assert.strictEqual(problems[0].range.start.line, 1);      // line 2
+			const editor = vscode.window.activeTextEditor;
+			assert.strictEqual(editor?.document.uri.fsPath, source);
+			assert.strictEqual(editor?.selection.active.line, problems[0].range.start.line);
+		} finally {
+			await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	test('F5 builds the package first, and stops on a build error', async function () {
+		this.timeout(20000);
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
+		const source = path.join(directory, 'broken.ns');
+		fs.writeFileSync(source, 'local a := 1;\nlocal b := (a + 2;\nreturn {};\n');
+		try {
+			await vscode.window.showTextDocument(vscode.Uri.file(source));
+			const config: vscode.DebugConfiguration = { type: 'newtonscript', request: 'launch', name: 'Test', program: path.join(directory, 'broken.pkg') };
+			const started = await withNewtc(() => vscode.debug.startDebugging(undefined, config));
+			assert.strictEqual(started, false);
+			assert.strictEqual(vscode.languages.getDiagnostics(vscode.Uri.file(source)).length, 1);
+		} finally {
+			await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	test('Knows a decompiled source and notices edits', async () => {
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
+		const pkg = path.join(directory, 'app.pkg');
+		const { source, map } = decompiledNames(pkg);
+		try {
+			assert.strictEqual(path.basename(source), 'app_dec.ns');
+			assert.strictEqual(path.basename(map), 'app_dec.nsdbg');
+			fs.writeFileSync(pkg, '');
+			fs.writeFileSync(source, 'return {};\n');
+			assert.strictEqual(decompiledPackage(source), undefined);       // no map
+			fs.writeFileSync(map, JSON.stringify({ format: 'nsdbg', version: 1, source, functions: [] }));
+			assert.deepStrictEqual(decompiledPackage(source), { pkg, map });
+			assert.strictEqual(editedSource(map), undefined);
+			const later = new Date(Date.now() + 5000);
+			fs.utimesSync(source, later, later);
+			assert.strictEqual(editedSource(map), source);
+			// a map that names another source: not this one's
+			fs.writeFileSync(map, JSON.stringify({ format: 'nsdbg', version: 1, source: path.join(directory, 'other.ns'), functions: [] }));
+			assert.strictEqual(decompiledPackage(source), undefined);
+		} finally {
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	// The command decompiles a package next to it (hello_dec.ns, .nsdbg) and
+	// opens the source; F5 without a launch.json debugs the original package
+	// with the map: a breakpoint in the decompiled InstallScript stops. Needs
+	// $NEWTC.
+	test('Decompiles a package and debugs it with F5', async function () {
+		const newtc = process.env.NEWTC;
+		if (!newtc) {
+			this.skip();
+		}
+		this.timeout(30000);
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
+		const pkg = path.join(directory, 'hello.pkg');
+		spawnSync(newtc as string, ['-hello', '-opkg', pkg]);
+		const original = fs.readFileSync(pkg);
+		let breakpoint: vscode.SourceBreakpoint | undefined;
+		let output = '';
+		let onStop: (session: vscode.DebugSession) => void = () => {};
+		const stopped = new Promise<vscode.DebugSession>((resolve) => { onStop = resolve; });
+		const tracker = vscode.debug.registerDebugAdapterTrackerFactory('newtonscript', {
+			createDebugAdapterTracker: (session) => ({
+				onDidSendMessage: (message: { type?: string; event?: string; body?: { output?: string } }) => {
+					if (message.type === 'event' && message.event === 'output') {
+						output += message.body?.output ?? '';
+					} else if (message.type === 'event' && message.event === 'stopped') {
+						onStop(session);
+					}
+				},
+			}),
+		});
+		try {
+			await withNewtc(async () => {
+				await vscode.commands.executeCommand('vsnewt.decompile', vscode.Uri.file(pkg));
+				const source = path.join(directory, 'hello_dec.ns');
+				assert.ok(fs.existsSync(path.join(directory, 'hello_dec.nsdbg')));
+				assert.strictEqual(fs.realpathSync(vscode.window.activeTextEditor?.document.uri.fsPath ?? ''), fs.realpathSync(source));
+				const line = fs.readFileSync(source, 'utf8').split('\n').findIndex((text) => text.includes('if HasSlot(')) + 1;
+				breakpoint = new vscode.SourceBreakpoint(new vscode.Location(vscode.Uri.file(source), new vscode.Position(line - 1, 0)));
+				vscode.debug.addBreakpoints([breakpoint]);
+				const ended = new Promise<void>((resolve) => {
+					const listener = vscode.debug.onDidTerminateDebugSession(() => {
+						listener.dispose();
+						resolve();
+					});
+				});
+				await vscode.commands.executeCommand('workbench.action.debug.start');      // F5
+				const session = await stopped;
+				const trace = await session.customRequest('stackTrace', { threadId: 1 });
+				assert.strictEqual(trace.stackFrames[0].source.name, 'hello_dec.ns');
+				assert.strictEqual(trace.stackFrames[0].line, line);
+				assert.ok(/(\d+) of \1 functions found/.test(output), output);
+				await session.customRequest('continue', { threadId: 1 });
+				await Promise.resolve(session.customRequest('evaluate', {
+					expression: "if HasSlot(functions, 'TestCloseWindow) then TestCloseWindow(GetRoot().|hello:SIG|)",
+					context: 'repl',
+				})).catch(() => undefined);
+				await ended;
+			});
+			assert.ok(fs.readFileSync(pkg).equals(original), 'the package was changed');
+		} finally {
+			tracker.dispose();
+			if (breakpoint) {
+				vscode.debug.removeBreakpoints([breakpoint]);
+			}
+			await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	// Load(file): a relative name is found next to the calling file, and the
+	// loaded file's functions have its lines: a breakpoint there stops, in a
+	// script and in a package built from files that load others. Needs
+	// $NEWTC.
+	async function stopInLoadedFile(program: string, file: string, line: number, extra: Partial<vscode.DebugConfiguration> = {}): Promise<{ name: string; line: number }> {
+		const breakpoint = new vscode.SourceBreakpoint(new vscode.Location(vscode.Uri.file(file), new vscode.Position(line - 1, 0)));
+		vscode.debug.addBreakpoints([breakpoint]);
+		let onStop: (session: vscode.DebugSession) => void = () => {};
+		const stopped = new Promise<vscode.DebugSession>((resolve) => { onStop = resolve; });
+		const tracker = vscode.debug.registerDebugAdapterTrackerFactory('newtonscript', {
+			createDebugAdapterTracker: (session) => ({
+				onDidSendMessage: (message: { type?: string; event?: string }) => {
+					if (message.type === 'event' && message.event === 'stopped') {
+						onStop(session);
+					}
+				},
+			}),
+		});
+		try {
+			const ended = new Promise<void>((resolve) => {
+				const listener = vscode.debug.onDidTerminateDebugSession(() => {
+					listener.dispose();
+					resolve();
+				});
+			});
+			const config: vscode.DebugConfiguration = { type: 'newtonscript', request: 'launch', name: 'Load', program, ...extra };
+			assert.ok(await vscode.debug.startDebugging(undefined, config), 'debug session did not start');
+			const session = await stopped;
+			const trace = await session.customRequest('stackTrace', { threadId: 1 });
+			await session.customRequest('continue', { threadId: 1 });
+			await Promise.resolve(session.customRequest('evaluate', {
+				expression: "if HasSlot(functions, 'TestCloseWindow) then TestCloseWindow(GetRoot().|Loaded:SIG|)",
+				context: 'repl',
+			})).catch(() => undefined);
+			await ended;
+			return { name: trace.stackFrames[0].source?.path ?? '', line: trace.stackFrames[0].line };
+		} finally {
+			tracker.dispose();
+			vscode.debug.removeBreakpoints([breakpoint]);
+		}
+	}
+
+	test('Stops at a breakpoint in a loaded file (script)', async function () {
+		const newtc = process.env.NEWTC;
+		if (!newtc) {
+			this.skip();
+		}
+		this.timeout(20000);
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
+		const helper = path.join(directory, 'lib', 'helper.ns');
+		fs.mkdirSync(path.dirname(helper));
+		fs.writeFileSync(helper, 'global Twice(x)\nbegin\n  local y := x * 2;\n  return y;\nend;\n');
+		const program = path.join(directory, 'main.ns');
+		fs.writeFileSync(program, 'Load("lib/helper.ns");\nPrint(Twice(21));\n');
+		try {
+			const stop = await stopInLoadedFile(program, helper, 3, { newtc });
+			assert.strictEqual(fs.realpathSync(stop.name), fs.realpathSync(helper));
+			assert.strictEqual(stop.line, 3);
+		} finally {
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	test('Stops at a breakpoint in a loaded file (package built by F5)', async function () {
+		const newtc = process.env.NEWTC;
+		if (!newtc) {
+			this.skip();
+		}
+		this.timeout(30000);
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
+		const parts = path.join(directory, 'parts.ns');
+		fs.writeFileSync(parts, 'global kInstall := func(partFrame)\nbegin\n  local greeting := "installed";\n  Print(greeting);\nend;\n');
+		const source = path.join(directory, 'Loaded.ns');
+		fs.writeFileSync(source, [
+			'Load("parts.ns");',
+			"return {signature: 'package0, id: \"xxxx\", version: 1, copyright: \"c\", name: \"Loaded:SIG\",",
+			"  part: [{type: \"form\", flags: {type: 'nos, Notify: true},",
+			"    data: {app: '|Loaded:SIG|, text: \"Loaded\", InstallScript: kInstall,",
+			"      theForm: {_proto: @180, appSymbol: '|Loaded:SIG|, viewBounds: {left: 0, top: 50, right: 200, bottom: 120}}}}]};",
+			'',
+		].join('\n'));
+		try {
+			await vscode.window.showTextDocument(vscode.Uri.file(source));
+			const stop = await withNewtc(() => stopInLoadedFile(path.join(directory, 'Loaded.pkg'), parts, 3));
+			assert.ok(fs.existsSync(path.join(directory, 'Loaded.pkg')), 'F5 did not build the package');
+			assert.strictEqual(fs.realpathSync(stop.name), fs.realpathSync(parts));
+			assert.strictEqual(stop.line, 3);
+		} finally {
+			await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	// "target": the extension starts newtc -dap-server in the background and
+	// keeps it, so the Newton (here newtc -ntk-device playing one) stays
+	// connected from one session to the next. Needs $NEWTC.
+	test('Keeps the Newton connected between sessions (background server)', async function () {
+		const newtc = process.env.NEWTC;
+		if (!newtc) {
+			this.skip();
+		}
+		this.timeout(60000);
+		const port = await new Promise<number>((resolve) => {
+			const server = net.createServer();
+			server.listen(0, '127.0.0.1', () => {
+				const address = server.address() as net.AddressInfo;
+				server.close(() => resolve(address.port));
+			});
+		});
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
+		const one = path.join(directory, 'one.ns');
+		fs.writeFileSync(one, 'Print("session one");\nserverProbe := 41;\n');
+		const two = path.join(directory, 'two.ns');
+		fs.writeFileSync(two, 'Print("session two: " & (serverProbe + 1));\n');
+		const device = spawn(newtc as string, ['-dbg', '-ntk-device', `tcp-client:${port}`]);
+		try {
+			const first = await runSession(one, { target: `tcp:${port}` });
+			assert.ok(first.output.includes('The Newton is connected.') && first.output.includes('session one'), first.output);
+			const second = await runSession(two, { target: `tcp:${port}` });
+			assert.ok(second.output.includes('still connected') && second.output.includes('session two: 42'), second.output);
+		} finally {
+			await vscode.commands.executeCommand('vsnewt.stopDebugServer');
+			device.kill();
 			fs.rmSync(directory, { recursive: true, force: true });
 		}
 	});

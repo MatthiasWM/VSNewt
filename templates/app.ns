@@ -1,0 +1,57 @@
+// ${name}: a Newton app. F7 builds ${name}.pkg, F5 runs it.
+//
+// newtc runs this file, and what it returns is the package: a frame with
+// the package's name and its parts. A "form" part is an app; its data has
+// the app symbol, the name and icon in Extras, and theForm, the app's
+// base view.
+//
+// Protos are still given by their magic pointers (newtc doesn't have the
+// NTK names yet): @180 protoFloatNGo, @226 protoTextButton,
+// @218 protoStaticText, @164 protoCheckbox.
+//
+// A bigger app can be split: Load("views.ns") runs that file (next to this
+// one) here, with its constants and globals.
+
+// newtc runs each statement on its own: a local doesn't reach the next one,
+// a constant does.
+constant kAppSymbol := '|${name}:SIG|;   // ":SIG": your developer signature
+
+return {
+  signature: 'package0,
+  id: "xxxx",
+  version: 1,
+  copyright: "Copyright ${year}",
+  name: "${name}:SIG",
+  part: [
+    {
+      type: "form",
+      flags: {type: 'nos, Notify: true},
+      data: {
+        app: kAppSymbol,
+        text: "${name}",                    // the name in Extras
+        theForm: {
+          _proto: @180,                     // protoFloatNGo: a floater with a close box
+          appSymbol: kAppSymbol,
+          viewBounds: {left: 0, top: 50, right: 200, bottom: 120},
+          stepChildren: [
+            {
+              _proto: @226,                 // protoTextButton
+              text: "Say Hello",
+              viewBounds: {left: 50, top: 25, right: 150, bottom: 50},
+              buttonClickScript: func()
+              begin
+                local greeting := "Hello from ${name}!";
+                Print(greeting);            // in VS Code's Debug Console
+                ModalConfirm(greeting, ["OK"]);
+              end
+            }
+          ],
+          viewQuitScript: func()
+          begin
+            Print("Goodbye");
+          end
+        }
+      }
+    }
+  ]
+};

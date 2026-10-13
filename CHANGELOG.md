@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.3.0
+
+Debug on Einstein and on a MessagePad; build with F7. A Newton needs nothing
+from NTK.
+
+- **F7** builds the project into a package (with debug information) and
+  jumps to the first error; **F5** builds first when it runs the project's
+  package. The project is the setting `vsnewt.main`, else the file in the
+  editor.
+- **NewtonScript: New App Project**: a small app, the setting, and a
+  `launch.json` for newtc, Einstein, and a MessagePad.
+- Run and debug on a Newton: `"target": "tcp"` (Einstein) or
+  `"serial:<device>[@<bps>]"`: breakpoints, stepping, the stack, variables,
+  the Debug Console, exceptions, breakpoints in `InstallScript`s; `attach`
+  to what already runs there.
+- `newtc` runs in the background from the first such session on and keeps
+  the Newton connected; **NewtonScript: Stop the Debug Server** ends it.
+- **NewtonScript: Save the newtc App for the Newton...**: `newtc.pkg`, which
+  connects the Newton to newtc (instead of NTK's Toolkit app).
+- `"reinstall": true` uploads a package even if it is unchanged on the
+  Newton.
+- `Load("file.ns")` splits a source into several files (looked for next to
+  the calling file); breakpoints in loaded files work, and their errors
+  show up in them. `global x := value` works.
+- Build errors point at the right line: a syntax error at its own line, an
+  error at run time at the top-level statement that ran. A package frame
+  without `flags` builds (it crashed newtc).
+- **NewtonScript: Decompile a Package for Debugging...** (also in the
+  Explorer): `app_dec.ns` and its debug map next to the package, the source
+  read-only, two launch configurations; F5 in the decompiled source debugs
+  the original package. F5 warns when the source was changed after
+  decompiling (its lines no longer match) and offers to decompile again.
+
 ## 0.2.0
 
 Newton apps run in windows: nBattleship 1.4 plays to the end.

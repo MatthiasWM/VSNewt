@@ -2,7 +2,7 @@
   "name": "vsnewt",
   "displayName": "NewtonScript (VSNewt)",
   "description": "Edit, compile, run, and debug NewtonScript (Apple Newton) with the newtc compiler and debugger.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "MatthiasWM",
   "license": "MIT",
   "icon": "images/icon.png",
@@ -29,12 +29,38 @@
     "vscode": "^1.137.0"
   },
   "activationEvents": [
+    "onLanguage:newtonscript",
     "onDebugResolve:newtonscript",
     "onDebugDynamicConfigurations:newtonscript"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
+      {
+        "command": "vsnewt.build",
+        "title": "Build the Package",
+        "category": "NewtonScript"
+      },
+      {
+        "command": "vsnewt.newProject",
+        "title": "New App Project",
+        "category": "NewtonScript"
+      },
+      {
+        "command": "vsnewt.decompile",
+        "title": "Decompile a Package for Debugging...",
+        "category": "NewtonScript"
+      },
+      {
+        "command": "vsnewt.saveConnectPackage",
+        "title": "Save the newtc App for the Newton...",
+        "category": "NewtonScript"
+      },
+      {
+        "command": "vsnewt.stopDebugServer",
+        "title": "Stop the Debug Server (disconnects the Newton)",
+        "category": "NewtonScript"
+      },
       {
         "command": "vsnewt.compile",
         "title": "Compile with VSNewt",
@@ -64,6 +90,22 @@
         "command": "vsnewt.debugNsof",
         "title": "Debug NSOF with VSNewt",
         "category": "NewtonScript"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "vsnewt.decompile",
+          "when": "resourceExtname =~ /^\\.(pkg|newtonpkg|nspkg)$/i",
+          "group": "navigation@90"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "vsnewt.build",
+        "key": "f7",
+        "when": "editorLangId == newtonscript"
       }
     ],
     "languages": [
@@ -117,7 +159,7 @@
             "properties": {
               "program": {
                 "type": "string",
-                "description": "What to run: a NewtonScript file (.ns) is compiled and run; a package (.pkg) is loaded with its debug map and installed (its InstallScript runs).",
+                "description": "What to run: a NewtonScript file (.ns) is compiled and run; a package (.pkg) is loaded with its debug map and installed (its InstallScript runs). A package the project builds (vsnewt.main, else the file in the editor, with the same name) is built first, like F7.",
                 "default": "${file}"
               },
               "newtc": {
@@ -143,6 +185,42 @@
               "debugServer": {
                 "type": "number",
                 "description": "For working on newtc: connect to a newtc started as `newtc -dap-server <port>` (e.g. in a debugger) instead of starting one."
+              },
+              "target": {
+                "type": "string",
+                "description": "Run and debug the program on a Newton instead of in newtc: \"tcp\" for Einstein (newtc listens on 127.0.0.1:3679, where Einstein's serial port connects; tap \"Connect\" in the newtc app on the Newton), \"tcp:<port>\", or \"serial:<device>[@<bps>]\" for a MessagePad (e.g. \"serial:/dev/cu.usbserial-1420@38400\"). The Newton needs the newtc app (command \"NewtonScript: Save the newtc App for the Newton\"; install it once) or NTK's Toolkit.pkg; newtc installs what else it needs. newtc then runs in the background and keeps the Newton connected between sessions."
+              },
+              "reinstall": {
+                "type": "boolean",
+                "description": "With target: upload the package to the Newton even if it is unchanged there since the last upload, so its InstallScript runs again (some apps reset their state in it). Default: an unchanged package is not uploaded again.",
+                "default": false
+              }
+            }
+          },
+          "attach": {
+            "required": [
+              "target"
+            ],
+            "properties": {
+              "target": {
+                "type": "string",
+                "description": "The Newton to attach to: \"tcp\" for Einstein (tap \"Connect\" in the newtc app on the Newton), \"tcp:<port>\", or \"serial:<device>[@<bps>]\". Nothing is installed or run: the Newton goes on as it is, and breakpoints, exceptions, and BreakLoop() stop it. Disconnecting removes the breakpoints and lets it run on."
+              },
+              "program": {
+                "type": "string",
+                "description": "The package (.pkg) that is already installed on the Newton, for its source lines: compiled with -g, or with a debug map (debugMap). Optional."
+              },
+              "debugMap": {
+                "type": "string",
+                "description": "For a decompiled package: its debug map (.nsdbg, from `newtc -pkg <package> -odecompile <file.ns>`)."
+              },
+              "newtc": {
+                "type": "string",
+                "description": "Path of the newtc executable. Default: the setting vsnewt.newtcPath, else the newtc that comes with the extension."
+              },
+              "log": {
+                "type": "string",
+                "description": "Write all Debug Adapter Protocol messages to this file (newtc -dap-log)."
               }
             }
           }
@@ -168,12 +246,13 @@
           },
           {
             "label": "NewtonScript: Debug a package",
-            "description": "Install a package in newtc and debug it in its decompiled source (newtc -pkg <package> -odecompile <name>.ns writes <name>.nsdbg).",
+            "description": "Debug a package in its decompiled source (command \"NewtonScript: Decompile a Package for Debugging\" writes <name>_dec.ns and <name>_dec.nsdbg). The package itself runs, unchanged.",
             "body": {
               "type": "newtonscript",
               "request": "launch",
               "name": "Debug package",
-              "program": "^\"\\${workspaceFolder}/${1:app}.pkg\""
+              "program": "^\"\\${workspaceFolder}/${1:app}.pkg\"",
+              "debugMap": "^\"\\${workspaceFolder}/${1:app}_dec.nsdbg\""
             }
           },
           {
@@ -186,6 +265,39 @@
               "program": "^\"\\${file}\"",
               "debugServer": 4711
             }
+          },
+          {
+            "label": "NewtonScript: Run on Einstein",
+            "description": "Run a NewtonScript file or package on Einstein (tap \"Connect\" in the newtc app on the Newton).",
+            "body": {
+              "type": "newtonscript",
+              "request": "launch",
+              "name": "Run on Einstein",
+              "program": "^\"\\${file}\"",
+              "target": "tcp"
+            }
+          },
+          {
+            "label": "NewtonScript: Run on a MessagePad",
+            "description": "Run a NewtonScript file or package on a MessagePad on a serial port (tap \"Connect\" in the newtc app on the Newton).",
+            "body": {
+              "type": "newtonscript",
+              "request": "launch",
+              "name": "Run on a MessagePad",
+              "program": "^\"\\${file}\"",
+              "target": "serial:${1:/dev/cu.usbserial-0001}@38400"
+            }
+          },
+          {
+            "label": "NewtonScript: Attach to Einstein",
+            "description": "Attach to Einstein without installing anything; program (optional) is the package installed there, for its source lines.",
+            "body": {
+              "type": "newtonscript",
+              "request": "attach",
+              "name": "Attach to Einstein",
+              "target": "tcp",
+              "program": "^\"\\${workspaceFolder}/${1:app}.pkg\""
+            }
           }
         ]
       }
@@ -193,6 +305,12 @@
     "configuration": {
       "title": "VSNewt",
       "properties": {
+        "vsnewt.main": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "markdownDescription": "The project's main source file (relative to the workspace folder), e.g. `MyApp.ns`: **F7** builds it into a package next to it (`MyApp.pkg`, with debug information), and **F5** without a `launch.json` runs that package. Empty: F7 builds the NewtonScript file in the active editor."
+        },
         "vsnewt.newtcPath": {
           "type": "string",
           "default": "",
