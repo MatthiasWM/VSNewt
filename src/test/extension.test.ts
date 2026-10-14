@@ -8,7 +8,7 @@ import * as path from 'path';
 // You can import and use all API from the 'vscode' module
 // as well as import your extension to test it
 import * as vscode from 'vscode';
-import { compilerArguments, decompiledNames, decompiledPackage, editedSource, launchConfigurations, nsofCompilerArguments, nsofExecutionArguments, packagePath, parseCompilerError, projectName } from '../extension';
+import { compilerArguments, decompiledNames, decompiledPackage, editedSource, launchConfigurations, nsofCompilerArguments, nsofExecutionArguments, packagePath, parseCompilerError, platformArguments, projectName } from '../extension';
 
 suite('Extension Test Suite', () => {
 	vscode.window.showInformationMessage('Start all tests.');
@@ -460,7 +460,9 @@ suite('Extension Test Suite', () => {
 		const source = path.join(directory, 'MyApp.ns');
 		const template = fs.readFileSync(path.join(__dirname, '..', '..', 'templates', 'app.ns'), 'utf8');
 		fs.writeFileSync(source, template.replace(/\$\{name\}/g, 'MyApp').replace(/\$\{year\}/g, '2026'));
+		fs.copyFileSync(path.join(__dirname, '..', '..', 'templates', 'icon.png'), path.join(directory, 'icon.png'));
 		try {
+			assert.strictEqual(compilerArguments(source)[0], '-build');   // newtc makes the package
 			await vscode.window.showTextDocument(vscode.Uri.file(source));
 			const built = await withNewtc(() => vscode.commands.executeCommand<boolean>('vsnewt.build'));
 			assert.strictEqual(built, true);
@@ -730,6 +732,87 @@ suite('Extension Test Suite', () => {
 		}
 	});
 
+	// What a new project does on Einstein, with newtc -ntk-device playing the
+	// Newton: F5 builds the template (newtc -build) and uploads it through the
+	// background server; opening the app stops at a breakpoint in a script of
+	// its base view (viewSetupDoneScript, added here), and it goes on with
+	// continue. Needs $NEWTC.
+	test('Runs the new project template on a Newton and stops at a breakpoint', async function () {
+		const newtc = process.env.NEWTC;
+		if (!newtc) {
+			this.skip();
+		}
+		this.timeout(60000);
+		const port = await new Promise<number>((resolve) => {
+			const server = net.createServer();
+			server.listen(0, '127.0.0.1', () => {
+				const address = server.address() as net.AddressInfo;
+				server.close(() => resolve(address.port));
+			});
+		});
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
+		const source = path.join(directory, 'MyApp.ns');
+		const template = fs.readFileSync(path.join(__dirname, '..', '..', 'templates', 'app.ns'), 'utf8');
+		const app = template.replace(/\$\{name\}/g, 'MyApp').replace(/\$\{year\}/g, '2026')
+			.replace('  viewQuitScript:', '  viewSetupDoneScript: func() Print("opened"),\n  viewQuitScript:');
+		assert.ok(app.includes('viewSetupDoneScript'), 'the template has no viewQuitScript');
+		fs.writeFileSync(source, app);
+		fs.copyFileSync(path.join(__dirname, '..', '..', 'templates', 'icon.png'), path.join(directory, 'icon.png'));
+		const line = app.split('\n').findIndex((text) => text.includes('viewSetupDoneScript')) + 1;
+		const breakpoint = new vscode.SourceBreakpoint(new vscode.Location(vscode.Uri.file(source), new vscode.Position(line - 1, 0)));
+		const device = spawn(newtc as string, ['-dbg', '-ntk-device', `tcp-client:${port}`]);
+		let output = '';
+		let onStop: (session: vscode.DebugSession) => void = () => {};
+		const stopped = new Promise<vscode.DebugSession>((resolve) => { onStop = resolve; });
+		const tracker = vscode.debug.registerDebugAdapterTrackerFactory('newtonscript', {
+			createDebugAdapterTracker: (session) => ({
+				onDidSendMessage: (message: { type?: string; event?: string; body?: { output?: string } }) => {
+					if (message.type === 'event' && message.event === 'output') {
+						output += message.body?.output ?? '';
+					} else if (message.type === 'event' && message.event === 'stopped') {
+						onStop(session);
+					}
+				},
+			}),
+		});
+		vscode.debug.addBreakpoints([breakpoint]);
+		try {
+			await vscode.window.showTextDocument(vscode.Uri.file(source));
+			await withNewtc(async () => {
+				const config: vscode.DebugConfiguration = { type: 'newtonscript', request: 'launch', name: 'Einstein', program: path.join(directory, 'MyApp.pkg'), target: `tcp:${port}` };
+				assert.ok(await vscode.debug.startDebugging(undefined, config), 'debug session did not start');
+				const session = await stopped;
+				const trace = await session.customRequest('stackTrace', { threadId: 1 });
+				assert.strictEqual(fs.realpathSync(trace.stackFrames[0].source.path), fs.realpathSync(source), output);
+				assert.strictEqual(trace.stackFrames[0].line, line, output);
+				await session.customRequest('continue', { threadId: 1 });
+				await vscode.debug.stopDebugging(session);
+			});
+			assert.ok(output.includes('The Newton is connected.'), output);
+		} finally {
+			tracker.dispose();
+			vscode.debug.removeBreakpoints([breakpoint]);
+			await vscode.commands.executeCommand('vsnewt.stopDebugServer');
+			device.kill();
+			await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
+	test('Passes an NTK platform file to newtc (vsnewt.platform)', () => {
+		const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
+		try {
+			const platform = path.join(directory, 'Newton 2.1');
+			fs.writeFileSync(platform, '');
+			assert.deepStrictEqual(platformArguments(''), []);
+			assert.deepStrictEqual(platformArguments(platform), ['-platform', platform]);
+			assert.deepStrictEqual(platformArguments('Newton 2.1', directory), ['-platform', platform]);
+			assert.throws(() => platformArguments('Newton 2.0', directory), /Platform file not found/);
+		} finally {
+			fs.rmSync(directory, { recursive: true, force: true });
+		}
+	});
+
 	test('Builds NSOF compiler and execution arguments', () => {
 		const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'vsnewt-'));
 		const sourcePath = path.join(temporaryDirectory, 'test.ns');
@@ -741,6 +824,10 @@ suite('Extension Test Suite', () => {
 		try {
 			assert.deepStrictEqual(compilerArguments(sourcePath, packagePath), ['-script', sourcePath, '-opkg', packagePath]);
 			assert.deepStrictEqual(compilerArguments(sourcePath, packagePath, true), ['-g', '-script', sourcePath, '-opkg', packagePath]);
+			// an app for newtc -build: it sets newtAppName
+			fs.writeFileSync(sourcePath, '// my app\nnewtAppName := "MyApp:SIG";\n');
+			assert.deepStrictEqual(compilerArguments(sourcePath, packagePath, true), ['-g', '-build', sourcePath, '-opkg', packagePath]);
+			fs.writeFileSync(sourcePath, '');
 			assert.deepStrictEqual(nsofCompilerArguments(sourcePath, nsofPath), ['-script', sourcePath, '-onsof', nsofPath]);
 			assert.deepStrictEqual(nsofCompilerArguments(sourcePath, nsofPath, true), ['-g', '-script', sourcePath, '-onsof', nsofPath]);
 			assert.deepStrictEqual(nsofExecutionArguments(nsofPath), ['-nsof', nsofPath, '-run']);

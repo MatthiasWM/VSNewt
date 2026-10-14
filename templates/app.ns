@@ -1,57 +1,41 @@
 // ${name}: a Newton app. F7 builds ${name}.pkg, F5 runs it.
 //
-// newtc runs this file, and what it returns is the package: a frame with
-// the package's name and its parts. A "form" part is an app; its data has
-// the app symbol, the name and icon in Extras, and theForm, the app's
-// base view.
+// newtc builds the package from what this file sets (newtc -build): the
+// app's name, its icon, and theForm, its base view. Everything else has a
+// sane default. NTK's names work: protoFloatNGo, vjParentCenterH, ...;
+// kAppSymbol and kAppName (the label) are there once the name is set.
 //
-// Protos are still given by their magic pointers (newtc doesn't have the
-// NTK names yet): @180 protoFloatNGo, @226 protoTextButton,
-// @218 protoStaticText, @164 protoCheckbox.
-//
-// A bigger app can be split: Load("views.ns") runs that file (next to this
-// one) here, with its constants and globals.
-
 // newtc runs each statement on its own: a local doesn't reach the next one,
-// a constant does.
-constant kAppSymbol := '|${name}:SIG|;   // ":SIG": your developer signature
+// a global (as greeting below) or a constant does. A bigger app can be
+// split: Load("views.ns") runs that file (next to this one) here.
 
-return {
-  signature: 'package0,
-  id: "xxxx",
-  version: 1,
-  copyright: "Copyright ${year}",
-  name: "${name}:SIG",
-  part: [
-    {
-      type: "form",
-      flags: {type: 'nos, Notify: true},
-      data: {
-        app: kAppSymbol,
-        text: "${name}",                    // the name in Extras
-        theForm: {
-          _proto: @180,                     // protoFloatNGo: a floater with a close box
-          appSymbol: kAppSymbol,
-          viewBounds: {left: 0, top: 50, right: 200, bottom: 120},
-          stepChildren: [
-            {
-              _proto: @226,                 // protoTextButton
-              text: "Say Hello",
-              viewBounds: {left: 50, top: 25, right: 150, bottom: 50},
-              buttonClickScript: func()
-              begin
-                local greeting := "Hello from ${name}!";
-                Print(greeting);            // in VS Code's Debug Console
-                ModalConfirm(greeting, ["OK"]);
-              end
-            }
-          ],
-          viewQuitScript: func()
-          begin
-            Print("Goodbye");
-          end
-        }
-      }
-    }
-  ]
+newtAppName := "${name}:SIG";           // the package's name; ":SIG" is your developer signature
+newtAppLabel := "${name}";              // its name in Extras
+newtAppIcon := MakeIconFromPNG({file: "icon.png", depth: 4});   // 16 grays, and black and white
+newtAppCopyright := "Copyright ${year}";
+
+newt.theForm := {
+  _proto: protoFloatNGo,                // a floater with a close box
+  viewBounds: {left: 0, top: 50, right: 200, bottom: 130},
+  viewQuitScript: func() Print("Goodbye")
 };
+
+greeting := {
+  _proto: protoStaticText,
+  text: "Tap the button",
+  viewBounds: {left: 10, top: 10, right: 190, bottom: 30}
+};
+AddStepForm(newt.theForm, greeting);
+StepDeclare(newt.theForm, greeting, 'greeting);   // the button's script finds it as greeting
+
+helloButton := {
+  _proto: protoTextButton,
+  text: "Say Hello",
+  viewBounds: {left: 50, top: 40, right: 150, bottom: 60},
+  buttonClickScript: func()
+  begin
+    SetValue(greeting, 'text, "Hello from " & kAppName & "!");
+    Print(greeting.text);               // in VS Code's Debug Console
+  end
+};
+AddStepForm(newt.theForm, helloButton);

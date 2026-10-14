@@ -38,7 +38,9 @@ To run on Einstein or a MessagePad, see [On a Newton](#on-a-newton).
 **F7** saves your files and compiles the project into a package next to its
 source (`MyApp.ns` → `MyApp.pkg`), with debug information. The project is the
 file in the setting `vsnewt.main` (New App Project sets it), else the
-NewtonScript file you are editing.
+NewtonScript file you are editing. A source that sets `newtAppName` is built
+with `newtc -build` (see [Writing an app](#writing-an-app)); any other
+source must return the package frame (`newtc -script`).
 
 When something is wrong, F7 stops at the first error and shows it in the
 editor. It is also in the **Problems** view (Cmd+Shift+M), and the
@@ -181,60 +183,84 @@ Newton goes on.
 
 ## Writing an app
 
-A package source is a NewtonScript file that **returns the package**: a
-frame with the package's name and its parts. New App Project writes a small
-one to start from. Its form part is the app:
+An app's source says only what differs from a sane default, in NTK's style,
+and `newtc -build` makes the package from it. New App Project writes a
+small app to start from:
 
 ```
-return {
-  signature: 'package0, version: 1, id: "xxxx",
-  name: "MyApp:SIG", copyright: "...",
-  part: [{type: "form", flags: {type: 'nos, Notify: true},
-          data: {app: kAppSymbol, text: "MyApp", theForm: {...}}}]
-};
+newtAppName := "MyApp:SIG";            // the package's name (required)
+newtAppLabel := "MyApp";               // its name in Extras
+newtAppIcon := MakeIconFromPNG({file: "icon.png", depth: 4});
+
+newt.theForm := {_proto: protoFloatNGo,
+                 viewBounds: {left: 0, top: 50, right: 200, bottom: 130}};
+
+greeting := {_proto: protoStaticText, text: "Hello",
+             viewBounds: {left: 10, top: 10, right: 190, bottom: 30}};
+AddStepForm(newt.theForm, greeting);              // a child of the app's view
+StepDeclare(newt.theForm, greeting, 'greeting);   // its scripts find it as greeting
 ```
+
+What you can set (all but the name have defaults):
+
+| Global | Default | |
+|---|---|---|
+| `newtAppName` | (required) | The package's name, `"Name:Signature"` |
+| `newtAppSymbol` | the name, as a symbol | The app's symbol |
+| `newtAppLabel` | the name up to `:` | Its name in Extras |
+| `newtAppIcon` | none | `MakeIconFromPNG(...)` |
+| `newtAppHighlightedIcon` | none | The icon when it is highlighted (selected) |
+| `newtAppVersion` | `1` | |
+| `newtAppCopyright` | `""` | |
+| `newt.theForm` | a protoFloatNGo | The app's base view |
+| `newt.InstallScript`, `newt.RemoveScript` | none | As in NTK |
 
 Things to know:
+- NTK's names for protos and constants work (`protoFloatNGo`,
+  `vjParentCenterH`, `vfPen(2)`, ...): `newtc` has the NewtonOS 2.1 platform
+  built in. With NTK's platform file in the setting `vsnewt.platform`, that
+  file is used instead (it also has protos the built-in one leaves out, like
+  the mail protos). Once `newtAppName` is set, `kAppSymbol`, `kAppName` (the label),
+  `kAppString`, and `kPackageName` are there too, as in NTK.
 - `newtc` runs the file one statement at a time, so a `local` doesn't reach
-  the next statement. Use `constant` for literal values you need later,
-  like the app symbol, and `global` for anything else, like functions:
-  `global kInstall := func(partFrame) begin ... end;`.
-- Protos are given by their magic pointers, as `newtc` doesn't know NTK's
-  names yet: `@180` protoFloatNGo, `@226` protoTextButton, `@218`
-  protoStaticText, `@164` protoCheckbox. [Decompiling an existing
-  package](#debugging-an-existing-package) shows many more. Give them names
-  in a file of your own and `Load` it (below).
+  the next statement. Use globals (`greeting := ...`) or `constant`.
+- Icons and pictures come from PNG files: `MakeIconFromPNG("icon.png")`,
+  `MakeBitmapFromPNG("picture.png")`, or with options:
+  `{file: "icon.png", depth: 4, dither: true, mask: 'calculate}`. Depth 1
+  is black and white (every Newton), 4 adds 16 grays. The mask comes from
+  the PNG's transparency (`'picture`), from the edges to the first black
+  pixel (`'calculate`), or is left out (`'none`), as NTK's choices.
+- A source without `newtAppName` is built the older way: it **returns the
+  package**, a frame with the package's name and its parts
+  (`return {signature: 'package0, name: "MyApp:SIG", part: [...]};`).
 
 ### More than one file
 
 `Load("file.ns")` runs another source file, statement by statement, as if
 it were part of the calling one. Its constants, globals, and global
 functions are there for the statements after the `Load`. A relative name is
-looked for next to the file that calls `Load`. That way you can keep names
-for protos and constants in one file, and views or scripts in others:
+looked for next to the file that calls `Load`. That way you can keep views
+or scripts in files of their own:
 
 ```
-// defs.ns
-constant protoFloatNGo := @180;
-constant protoTextButton := @226;
-
 // buttons.ns
-global kHelloButton := {
+helloButton := {
   _proto: protoTextButton, text: "Say Hello",
-  viewBounds: {left: 50, top: 25, right: 150, bottom: 50},
+  viewBounds: {left: 50, top: 40, right: 150, bottom: 60},
   buttonClickScript: func() Print("Hello")
 };
+AddStepForm(newt.theForm, helloButton);
 
 // MyApp.ns, the project's main file (vsnewt.main)
-Load("defs.ns");
+newtAppName := "MyApp:SIG";
 Load("buttons.ns");
-return {..., theForm: {_proto: protoFloatNGo, stepChildren: [kHelloButton], ...}};
 ```
 
 F7 builds the package from all of them. An error in a loaded file shows up
-in that file, and breakpoints in a loaded file work like in the main file.
-`Load` is for building on the Mac: a `.ns` program that runs on a Newton
-(`"target"`) can't load files, so build a package instead.
+in that file and stops the build, and breakpoints in a loaded file work
+like in the main file. `Load` is for building on the Mac: a `.ns` program
+that runs on a Newton (`"target"`) can't load files, so build a package
+instead.
 
 ## Debugging an existing package
 
@@ -343,7 +369,8 @@ In the Command Palette, under **NewtonScript**:
 - **Stop the Debug Server**: ends the `newtc` that keeps the Newton
   connected.
 - **Compile with VSNewt** (and **for debugging**): the current file to a
-  package (`newtc -script <file> -opkg <file>.pkg`, with `-g`).
+  package (`newtc -build <file> -opkg <file>.pkg`, or `-script` for a
+  source that returns the package frame; with `-g`).
 - **Compile NSOF with VSNewt** (and **for debugging**): to an NSOF file
   (`-onsof`).
 - **Run NSOF with VSNewt**, **Debug NSOF with VSNewt**: `newtc -nsof <file>
@@ -356,14 +383,22 @@ In the Command Palette, under **NewtonScript**:
   package.
 - `vsnewt.newtcPath`: the `newtc` to use, e.g. your own build. Empty: the one
   that comes with the extension.
+- `vsnewt.platform`: an NTK platform file (e.g. NTK's `Platforms/Newton 2.1`)
+  for builds and debug sessions instead of `newtc`'s built-in NewtonOS 2.1
+  platform (`newtc -platform`). Only needed for what only NTK's file has,
+  like the mail protos. A relative path is from the workspace folder.
 
 ## Known limitations
 
 - macOS on Apple Silicon only, for now.
 - A MessagePad on a serial port works like Einstein, but hasn't been tried
   on real hardware yet; 38400 bps for now.
-- No NTK names for protos and constants yet: define the ones you need in a
-  file and `Load` it (see [More than one file](#more-than-one-file)).
+- On a Newton, the Debug Console evaluates only while the program is
+  stopped (at a breakpoint, an exception, or `BreakLoop()`), and **Pause**
+  doesn't work there yet.
+- NTK's platform functions that read its Mac resources (sounds, PICTs,
+  `MakeExtrasIcons`) and units (`DefineUnit`, ...) aren't there; use
+  `MakeIconFromPNG` and `MakeBitmapFromPNG` for pictures.
 - In newtc: no Newton screen around the apps (one app runs, in its own
   window, without the Extras drawer, the notepad, or the built-in apps), no
   handwriting or shape recognition, no keyboard input yet; taps are the only

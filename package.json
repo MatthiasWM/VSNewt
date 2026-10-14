@@ -315,6 +315,11 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Path of the `newtc` executable, e.g. a development build. Empty: use the `newtc` that comes with the extension (`bin/<platform>-<arch>/newtc`)."
+        },
+        "vsnewt.platform": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "An NTK platform file (e.g. NTK's `Platforms/Newton 2.1`) for `newtc` to use instead of its built-in NewtonOS 2.1 platform (`newtc -platform`), for builds and debug sessions: for the protos and functions only NTK's file has (e.g. the mail protos). A relative path is from the workspace folder. Empty: the built-in platform."
         }
       }
     },

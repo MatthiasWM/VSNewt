@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+Apps the NTK way, without NTK.
+
+- **New App Project** writes an app that only says what differs from the
+  defaults (`newtAppName`, `newtAppIcon`, `newt.theForm`, `AddStepForm`,
+  `StepDeclare`), and `icon.png`; F7 builds it with `newtc -build`. Sources
+  that return the package frame build as before.
+- NTK's names for protos and constants (`protoFloatNGo`, `vjParentCenterH`,
+  `vfPen(2)`, ...): newtc has the NewtonOS 2.1 platform built in. Sources
+  that define these constants themselves still work.
+- Icons and pictures from PNG files: `MakeIconFromPNG`, `MakeBitmapFromPNG`
+  (black and white, 16 grays, NTK's mask choices); an app's icon and its
+  highlighted version.
+- `ReadStreamFile`, `IsGlobalConstant`, `UndefineGlobalConstant`, `DefConst`.
+- The setting `vsnewt.platform`: an NTK platform file (e.g. `Newton 2.1`)
+  instead of the built-in platform (`newtc -platform`).
+- An error in a file that `Load` runs stops the build (it ran on before),
+  and a missing file says where it was looked for.
+
 ## 0.3.0
 
 Debug on Einstein and on a MessagePad; build with F7. A Newton needs nothing

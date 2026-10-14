@@ -82,7 +82,15 @@ export function compilerArguments(source: string | vscode.Uri, output?: string |
 		throw new Error('Output file must have a .pkg or .newtonpkg extension.');
 	}
 
-	return [ ...(generate ? ['-g'] : []), '-script', validatedSource.path, '-opkg', outputPath];
+	const run = usesBuild(validatedSource.path) ? '-build' : '-script';
+	return [ ...(generate ? ['-g'] : []), run, validatedSource.path, '-opkg', outputPath];
+}
+
+// An app written for `newtc -build` (New App Project's template) sets
+// newtAppName and newtc makes the package; else the source returns the
+// package frame itself (`newtc -script`).
+export function usesBuild(sourcePath: string): boolean {
+	return /^\s*newtAppName\s*:=/m.test(fs.readFileSync(sourcePath, 'utf8'));
 }
 
 export function nsofCompilerArguments(source: string | vscode.Uri, output?: string | vscode.Uri, generate = false): string[] {
@@ -116,12 +124,34 @@ export interface CompileResult {
 
 const newtcErrorPattern = /^newtc: ERROR: (.*)$/;
 
+// The setting vsnewt.platform: an NTK platform file (e.g. NTK's
+// "Newton 2.1") that newtc uses instead of its built-in NewtonOS 2.1
+// platform: `-platform <file>`, for builds and debug sessions. A relative
+// path is from the workspace folder; empty: the built-in platform.
+export function platformArguments(setting: string, workspaceFolder?: string): string[] {
+	const file = setting.trim();
+	if (!file) {
+		return [];
+	}
+	const resolved = path.isAbsolute(file) || !workspaceFolder ? file : path.join(workspaceFolder, file);
+	if (!fs.existsSync(resolved)) {
+		throw new Error(`Platform file not found: ${resolved} (setting vsnewt.platform)`);
+	}
+	return ['-platform', resolved];
+}
+
+function configuredPlatformArguments(): string[] {
+	const setting = vscode.workspace.getConfiguration('vsnewt').get<string>('platform', '');
+	return platformArguments(setting, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
+}
+
 function runCompiler(extensionPath: string, args: string[], outputChannel: vscode.OutputChannel, diagnostics: vscode.DiagnosticCollection, cwd?: string): Promise<CompileResult> {
 	const result: CompileResult = { code: null, errors: [], messages: [] };
 
 	let binaryPath: string;
 	try {
 		binaryPath = compilerPath(extensionPath);
+		args = [...configuredPlatformArguments(), ...args];
 	} catch (error) {
 		vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error));
 		return Promise.resolve(result);
@@ -495,8 +525,9 @@ class NewtcDebugAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
 		const newtc = session.configuration.newtc || compilerPath(this.extensionPath);
 		// "log": newtc writes all DAP messages to this file
 		const log: string[] = session.configuration.log ? ['-dap-log', session.configuration.log] : [];
-		// "args": more newtc arguments, before -dap
-		const args: string[] = Array.isArray(session.configuration.args) ? session.configuration.args.map(String) : [];
+		// "args": more newtc arguments, before -dap; vsnewt.platform first
+		const args: string[] = [...configuredPlatformArguments(),
+			...(Array.isArray(session.configuration.args) ? session.configuration.args.map(String) : [])];
 		// "target": a Newton, through the background server
 		if (session.configuration.target) {
 			const starting = !this.server.running;
@@ -651,6 +682,10 @@ async function newProject(extensionPath: string): Promise<void> {
 	if (!fs.existsSync(source)) {
 		const template = fs.readFileSync(path.join(extensionPath, 'templates', 'app.ns'), 'utf8');
 		fs.writeFileSync(source, template.replace(/\$\{name\}/g, name).replace(/\$\{year\}/g, String(new Date().getFullYear())));
+	}
+	const icon = path.join(folder.fsPath, 'icon.png');   // the template's newtAppIcon
+	if (!fs.existsSync(icon)) {
+		fs.copyFileSync(path.join(extensionPath, 'templates', 'icon.png'), icon);
 	}
 	fs.mkdirSync(path.dirname(launch), { recursive: true });
 	if (!fs.existsSync(launch)) {
